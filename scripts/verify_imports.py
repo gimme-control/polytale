@@ -1,4 +1,5 @@
-"""Import hygiene: core/ is web/media-free, nothing imports the parent Arbitale repo."""
+"""Import hygiene: core/ is the v2 module set, web/media-free, and nothing imports the parent
+Arbitale repo or a core module that no longer exists."""
 
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ from scripts.testkit import ROOT, Checker
 T = Checker("verify_imports")
 PARENT = ROOT.parent
 CORE_FORBIDDEN = {"fastapi", "starlette", "uvicorn", "server", "media"}
+CORE_MODULES = {"content", "dm", "game", "gemini", "phrasebook", "prompt", "state", "summary",
+                "tools", "views", "vocab"}
 SKIP_DIRS = {"web", "node_modules", ".git", "states", "cache", "logs", "__pycache__", ".venv"}
 
 
@@ -39,6 +42,28 @@ def parent_module_names() -> set[str]:
               "web_api", "web_service", "arbitale_media", "arbitale_scenario"}
     own = {p.name for p in ROOT.iterdir() if p.is_dir()} | {p.stem for p in ROOT.glob("*.py")}
     return names - own
+
+
+def imported_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            found |= {node.module} | {f"{node.module}.{alias.name}" for alias in node.names}
+    return found
+
+
+def test_core_layout() -> None:
+    present = {p.stem for p in (ROOT / "core").glob("*.py")} - {"__init__"}
+    T.check("core/ is exactly the expected module set", present == CORE_MODULES,
+            sorted(present ^ CORE_MODULES))
+    T.check("the v1 cartridge tree is gone", not (ROOT / "cartridges").exists())
+    for path in python_files(ROOT):
+        stale = sorted(m for m in imported_modules(path)
+                       if m.startswith("core.") and m.split(".")[1] not in CORE_MODULES)
+        T.check(f"{path.relative_to(ROOT)} imports only core modules that exist", not stale, stale)
 
 
 def test_core_modules_import() -> None:
@@ -77,6 +102,7 @@ def test_no_parent_imports() -> None:
 
 
 if __name__ == "__main__":
+    T.run("core layout", test_core_layout)
     T.run("core modules import", test_core_modules_import)
     T.run("core forbidden imports", test_core_forbidden_imports)
     T.run("no parent imports", test_no_parent_imports)

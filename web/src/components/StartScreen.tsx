@@ -1,91 +1,91 @@
-// Title card: cover art, promise, headphone note, and Start — the moment we ask
-// for the microphone, with a plain explanation (PRD §25).
+// Title: the story is the hero. Its art, its name, its premise, how hard you want it,
+// and one button.
 
 import { useGame } from "../store";
-import { api } from "../lib/api";
-import { ArtImage } from "./Art";
-import { Wordmark } from "./Hud";
-import { IconHeadphones, IconMic } from "./icons";
+import { Picture } from "./Picture";
+import type { Difficulty } from "../lib/types";
+
+const DIFFICULTIES: { id: Difficulty; label: string; blurb: string }[] = [
+  { id: "story", label: "Story", blurb: "The narrator keeps you oriented." },
+  { id: "immersion", label: "Immersion", blurb: "You're on your own." },
+];
 
 export function StartScreen() {
-  const begin = useGame((s) => s.begin);
+  const catalog = useGame((s) => s.catalog);
+  const story = useGame((s) => s.story ?? s.catalog?.story ?? null);
+  const language = useGame((s) => s.language ?? s.catalog?.language ?? null);
   const starting = useGame((s) => s.starting);
-  const error = useGame((s) => s.bootError);
-  const cid = useGame((s) => s.cartridgeId);
-  const resumable = useGame((s) => !!s.sid && s.transcript.length > 0);
+  const error = useGame((s) => s.startError);
+  const begin = useGame((s) => s.begin);
+  const difficulty = useGame((s) => s.chosenDifficulty);
+  const chooseDifficulty = useGame((s) => s.chooseDifficulty);
+  const art = story?.art_url || catalog?.scenes[0]?.cover_url;
 
   return (
-    <main className="grain relative h-full w-full overflow-hidden bg-ink" data-testid="start-screen">
-      <div className="absolute inset-0" style={{ animation: "slow-zoom 30s ease-out forwards" }}>
-        <ArtImage
-          src={[api.artUrl(cid, "art/cover.webp"), api.artUrl(cid, "art/cover.png"), api.artUrl(cid, "cover.png")]}
-          kind="cover"
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      </div>
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,10,16,0.94)_0%,rgba(8,10,16,0.78)_38%,rgba(8,10,16,0.15)_75%)] max-md:bg-[linear-gradient(0deg,rgba(8,10,16,0.97)_0%,rgba(8,10,16,0.82)_48%,rgba(8,10,16,0.2)_85%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-ink to-transparent" />
+    <main data-testid="start-screen" className="slow-fade-in absolute inset-0 overflow-hidden">
+      <Picture src={art} className="absolute inset-0" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#080909] from-[8%] via-[#080909]/60 via-[52%] to-[#080909]/10" />
 
-      <div className="absolute left-6 top-6 sm:left-10 sm:top-8">
-        <Wordmark />
-      </div>
+      <p data-testid="wordmark" className="over-art absolute left-6 top-6 m-0 text-[15px] font-semibold tracking-[-0.01em] text-ink sm:left-12 sm:top-10">
+        Polytale
+      </p>
 
-      <div className="relative flex h-full flex-col justify-end px-6 pb-10 sm:px-10 md:justify-center md:pb-0 lg:px-20">
-        <div className="max-w-[560px]">
-          <div className="rise-in mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted backdrop-blur">
-            <span className="jp whitespace-nowrap text-[13px] normal-case tracking-normal text-brass-strong">日本語</span>
-            <span className="whitespace-nowrap">
-              Japanese · <span className="max-sm:hidden">Absolute </span>beginner · 4 min
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-[1180px] px-6 pb-9 sm:px-12 sm:pb-16">
+        <h1 data-testid="story-title" className="story over-art m-0 text-[46px] font-medium leading-[1.02] tracking-[-0.02em] text-ink sm:text-[76px]">
+          {story?.title ?? "Polytale"}
+        </h1>
+        <p data-testid="premise" className="story over-art m-0 mt-4 max-w-[560px] text-[17px] leading-[1.55] text-ink/90 sm:mt-5 sm:text-[19px]">
+          {story?.premise ?? "Learn a language by needing it."}
+        </p>
+        {language && (
+          <p data-testid="language-line" className="over-art m-0 mt-4 text-[13px] text-ink-2">
+            Learn a language by needing it. {language.name} ·{" "}
+            <span lang={language.locale} className="target font-normal">
+              {language.native_name}
             </span>
-          </div>
-          <h1 className="rise-in font-display text-[46px] font-semibold leading-[1.02] tracking-[-0.01em] text-text sm:text-[68px]" style={{ animationDelay: "80ms" }}>
-            The Broken
-            <br />
-            Airship
-          </h1>
-          <p className="rise-in mt-5 max-w-[460px] text-[18px] leading-relaxed text-text/90 sm:text-[20px]" style={{ animationDelay: "160ms" }}>
-            Learn to speak by making yourself understood.
           </p>
-          <p className="rise-in mt-2 max-w-[460px] text-[14.5px] leading-relaxed text-muted" style={{ animationDelay: "220ms" }}>
-            A storm is coming. The engineer can fix the airship — but she only speaks Japanese, and she needs your help.
-          </p>
+        )}
 
-          <div className="rise-in mt-7 flex items-center gap-3 text-[14px] text-text/90" style={{ animationDelay: "280ms" }}>
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-sky">
-              <IconHeadphones className="h-4.5 w-4.5" />
-            </span>
-            Put on headphones. You'll speak Japanese out loud.
-          </div>
-
-          <div className="rise-in mt-8" style={{ animationDelay: "340ms" }}>
-            <button
-              type="button"
-              onClick={() => void begin()}
-              disabled={starting}
-              className="group inline-flex h-14 items-center gap-3 rounded-full bg-gradient-to-b from-brass-strong to-brass pl-3 pr-7 text-[16px] font-bold text-ink shadow-[0_18px_50px_-12px_rgba(233,180,95,0.8),inset_0_1px_0_rgba(255,255,255,0.5)] transition hover:brightness-105 active:scale-[0.98] disabled:opacity-70"
-              data-testid="start-button"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink/15">
-                {starting ? (
-                  <span className="h-4 w-4 rounded-full border-2 border-ink/30 border-t-ink" style={{ animation: "spin 0.8s linear infinite" }} />
-                ) : (
-                  <IconMic className="h-5 w-5" />
-                )}
-              </span>
-              {starting ? "Getting ready…" : resumable ? "Continue" : "Start"}
-            </button>
-            <p className="mt-3 max-w-[420px] text-[12.5px] leading-relaxed text-faint">
-              Your browser will ask to use the microphone. It only listens while you hold the talk button, and the audio
-              is used only to hear what you said. You can type instead at any time.
-            </p>
-            {error && (
-              <p className="mt-3 rounded-xl border border-rose/30 bg-rose/10 px-3 py-2 text-[13px] text-rose" role="alert">
-                {error}
-              </p>
-            )}
-          </div>
+        <div role="radiogroup" aria-label="Difficulty" data-testid="difficulty-choice" className="mt-7 flex max-w-[520px] gap-2 sm:mt-9">
+          {DIFFICULTIES.map((d) => {
+            const on = d.id === difficulty;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                data-testid={`start-difficulty-${d.id}`}
+                data-active={on ? "1" : "0"}
+                onClick={() => chooseDifficulty(d.id)}
+                className={`flex-1 rounded-[10px] border bg-glass px-4 py-3 text-left backdrop-blur-md transition-colors duration-150 ${on ? "border-ink/70" : "border-hair hover:border-hair-2"}`}
+              >
+                <span className={`block text-[14px] font-semibold ${on ? "text-ink" : "text-ink-2"}`}>{d.label}</span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-ink-3">{d.blurb}</span>
+              </button>
+            );
+          })}
         </div>
+
+        <div className="mt-5 flex flex-col gap-4 sm:mt-6 sm:flex-row sm:items-center sm:gap-6">
+          <button
+            type="button"
+            data-testid="begin-button"
+            disabled={starting}
+            onClick={() => void begin()}
+            className="h-12 shrink-0 rounded-[10px] border-0 bg-ink px-9 text-[15px] font-semibold text-night transition-opacity duration-150 hover:opacity-90 disabled:opacity-60"
+          >
+            {starting ? "One moment…" : "Begin"}
+          </button>
+          <p className="over-art m-0 max-w-[400px] text-[13px] leading-relaxed text-ink-2">
+            Polytale will ask to use your microphone so you can speak. If you'd rather not, decline and type instead.
+          </p>
+        </div>
+        {error && (
+          <p data-testid="start-error" role="alert" className="fade-in m-0 mt-4 text-[13px] text-ink">
+            {error}
+          </p>
+        )}
       </div>
     </main>
   );

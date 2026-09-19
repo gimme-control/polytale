@@ -1,4 +1,8 @@
-"""Game state models and atomic persistence."""
+"""Journey state models and atomic persistence.
+
+A Journey is one learner's run through the scene list. The vocabulary record lives on the
+journey (it outlives scenes); everything about the scene being played lives on its SceneRun.
+"""
 
 from __future__ import annotations
 
@@ -8,130 +12,73 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from core.cartridge import Cartridge, LineSpec
+from core.content import DIFFICULTIES, NEUTRAL_MOOD, Content
 
 STATES_ROOT = Path(__file__).resolve().parents[1] / "states"
+SCHEMA_VERSION = 3
 
-Stage = Literal[
-    "unseen",
-    "context_recognized",
-    "speech_recognized",
-    "produced_with_cue",
-    "produced_independently",
-    "transferred",
-]
-STAGES: tuple[Stage, ...] = (
-    "unseen",
-    "context_recognized",
-    "speech_recognized",
-    "produced_with_cue",
-    "produced_independently",
-    "transferred",
-)
 InputMode = Literal["speech", "text", "tap"]
-EvidenceType = Literal["recognized", "produced", "transferred"]
-Outcome = Literal["understood", "clarified", "not_understood"]
-FlagValue = bool | str | int
+Outcome = Literal["first_try", "with_help", "with_hint", "missed"]
+VocabState = Literal["not_encountered", "shaky", "mastered"]
 
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_JOURNEY_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class Focus(BaseModel):
-    object_id: str
-    gesture: str
+# ---------------------------------------------------------------- vocabulary record
 
 
-class World(BaseModel):
-    holders: dict[str, str] = Field(default_factory=dict)
-    fixtures: dict[str, str] = Field(default_factory=dict)
-    focus: Focus | None = None
-    flags: dict[str, FlagValue] = Field(default_factory=dict)
-
-
-class EvidenceRecord(BaseModel):
-    """One ledger record per (attempt, concept, evidence_type)."""
-
-    attempt_id: str
+class Result(BaseModel):
+    scene_id: str
     turn: int
-    beat_id: str
-    concept_id: str
-    pattern_id: str | None = None
-    evidence_type: EvidenceType
+    attempt_id: str
     outcome: Outcome
-    input_mode: InputMode
-    mixed_language: bool = False
-    support_level: int
-    transcript: str = ""
-    stage_after: Stage | None = None  # None: no stage change (tap fallback / not_understood)
-    pattern_stage_after: Stage | None = None
-    tap_fallback: bool = False
-    downgraded: bool = False  # transfer attempt recorded as produced_with_cue (support used)
+    produced: bool = False
+    recall: bool = False
 
 
-class LastConstruction(BaseModel):
-    pattern_id: str
-    concept_id: str
-    beat_id: str
-    support_level: int
+class VocabRecord(BaseModel):
+    appearances: int = 0
+    results: list[Result] = Field(default_factory=list)
+    first_scene: str = ""
+    last_scene: str = ""
+    state: VocabState = "not_encountered"
+    produced: bool = False
+
+    @property
+    def met(self) -> bool:
+        """The learner has come across this item: the character said it, or they used it."""
+        return self.appearances > 0 or bool(self.results)
 
 
-class LearningState(BaseModel):
-    target_locale: str
-    support_locale: str
-    active_beat_index: int = 0
-    concept_stage: dict[str, Stage] = Field(default_factory=dict)
-    pattern_stage: dict[str, Stage] = Field(default_factory=dict)
-    exposures: dict[str, int] = Field(default_factory=dict)
-    help_level: dict[str, int] = Field(default_factory=dict)
-    help_max_used: dict[str, int] = Field(default_factory=dict)
-    failures: dict[str, int] = Field(default_factory=dict)
-    phrase_modeled: dict[str, bool] = Field(default_factory=dict)
-    evidence: list[EvidenceRecord] = Field(default_factory=list)
-    last_successful_construction: LastConstruction | None = None
+# ---------------------------------------------------------------- dialogue + transcript
 
 
-class SpokenLine(BaseModel):
+class Segment(BaseModel):
+    t: str
+    r: str = ""
+
+
+class Line(BaseModel):
     line_id: str
-    speaker: str
     speaker_name: str
+    segments: list[Segment]
     text: str
-    language: str
-    romanization: str = ""
-    translation: str = ""
-    concept_ids: list[str] = Field(default_factory=list)
-    pattern_id: str | None = None
+    romanization: str
+    item_ids: list[str] = Field(default_factory=list)
+    highlight_object_ids: list[str] = Field(default_factory=list)
     audio_url: str
 
-    @classmethod
-    def build(
-        cls, cartridge: Cartridge, session_id: str, line_id: str, spec: LineSpec | dict
-    ) -> SpokenLine:
-        """Runtime line from an authored/validated spec; audio is served per line_id."""
-        data = spec.model_dump() if isinstance(spec, LineSpec) else dict(spec)
-        npc = cartridge.npc(str(data.get("speaker") or ""))
-        return cls(
-            line_id=line_id,
-            speaker=str(data.get("speaker") or ""),
-            speaker_name=npc.name if npc else str(data.get("speaker") or ""),
-            text=str(data.get("text") or ""),
-            language=str(data.get("language") or ""),
-            romanization=str(data.get("romanization") or ""),
-            translation=str(data.get("translation") or ""),
-            concept_ids=list(data.get("concept_ids") or []),
-            pattern_id=data.get("pattern_id") or None,
-            audio_url=line_audio_url(session_id, line_id),
-        )
 
-
-def line_audio_url(session_id: str, line_id: str) -> str:
-    """Relative audio URL; the server/client append the session token."""
-    return f"/api/sessions/{session_id}/lines/{line_id}/audio"
+class NpcEntry(BaseModel):
+    kind: Literal["npc"] = "npc"
+    turn: int
+    line: Line
 
 
 class NarrationEntry(BaseModel):
@@ -140,36 +87,50 @@ class NarrationEntry(BaseModel):
     text: str
 
 
-class NpcEntry(BaseModel):
-    kind: Literal["npc"] = "npc"
+class ClueView(BaseModel):
+    id: str
+    title: str
+    text: str
+
+
+class ClueEntry(BaseModel):
+    kind: Literal["clue"] = "clue"
     turn: int
-    line: SpokenLine
+    clue: ClueView
 
 
-class PlayerEntry(BaseModel):
-    kind: Literal["player"] = "player"
+class LearnerEntry(BaseModel):
+    kind: Literal["learner"] = "learner"
     turn: int
     attempt_id: str
     input_mode: InputMode
     transcript: str
     romanized: str | None = None
     tapped_object_id: str | None = None
+    action_id: str | None = None
 
 
-class EvidenceEntry(BaseModel):
-    kind: Literal["evidence"] = "evidence"
+class SceneEventEntry(BaseModel):
+    kind: Literal["scene"] = "scene"
     turn: int
-    beat_id: str
-    concept_ids: list[str]
-    evidence_type: EvidenceType
-    outcome: Outcome
-    stage_after: dict[str, Stage | None]  # concept_id -> stage after (None: unchanged/tap)
-    support_level: int
-    input_mode: InputMode
+    event: Literal["object_moved", "goal_done"]
+    object_id: str | None = None
+    from_zone: str | None = Field(
+        default=None, validation_alias=AliasChoices("from_zone", "from"),
+        serialization_alias="from",
+    )
+    to_zone: str | None = Field(
+        default=None, validation_alias=AliasChoices("to_zone", "to"), serialization_alias="to"
+    )
+    goal_id: str | None = None
+
+    # Always dumps as {"from", "to"} (the payload names), however the caller serializes.
+    model_config = ConfigDict(serialize_by_alias=True)
 
 
-TranscriptEntry = Annotated[
-    NarrationEntry | NpcEntry | PlayerEntry | EvidenceEntry, Field(discriminator="kind")
+Entry = Annotated[
+    NpcEntry | NarrationEntry | ClueEntry | LearnerEntry | SceneEventEntry,
+    Field(discriminator="kind"),
 ]
 
 
@@ -181,68 +142,193 @@ class Attempt(BaseModel):
     detected_languages: list[str] = Field(default_factory=list)
     confidence: float | None = None
     tapped_object_id: str | None = None
+    action_id: str | None = None  # the verb used on the tapped object; None = point
     created_at: str = Field(default_factory=_now)
     consumed: bool = False
     turn: int | None = None  # turn that consumed it
 
 
-class GameState(BaseModel):
-    session_id: str
-    cartridge_id: str
-    created_at: str = Field(default_factory=_now)
-    started: bool = False
+# ---------------------------------------------------------------- summary (persisted in history)
+
+
+class SummaryItem(BaseModel):
+    item_id: str
+    text: str
+    roman: str
+    gloss: str
+    state: VocabState
+    outcomes: list[Outcome] = Field(default_factory=list)
+    produced: bool = False
+    recall: bool = False
+    heard: bool = False  # the character said it in this journey, whether or not it was acted on
+    audio_url: str
+
+
+class SummaryCounts(BaseModel):
+    mastered: int = 0
+    shaky: int = 0
+    heard: int = 0  # the character said it; the learner never acted on it
+    not_encountered: int = 0
+
+
+class SceneRef(BaseModel):
+    id: str
+    name: str
+    tagline: str = ""
+
+
+class PhraseSegment(BaseModel):
+    t: str
+    r: str = ""
+    g: str = ""  # per-word gloss: it is the player's own sentence, so glossing it is fine
+
+
+class Phrase(BaseModel):
+    """One "How do I say…?" lookup, kept as the player's own phrasebook."""
+
+    phrase_id: str
+    source: str
+    segments: list[PhraseSegment]
+    text: str
+    romanization: str
+    audio_url: str
+    item_ids: list[str] = Field(default_factory=list)
+
+
+class Summary(BaseModel):
+    scene_id: str
+    scene_name: str
+    items: list[SummaryItem]
+    counts: SummaryCounts
+    recalled: list[str] = Field(default_factory=list)
+    lines: list[str] = Field(default_factory=list)
+    next_scene: SceneRef | None = None
+    phrasebook: list[Phrase] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- scene run + journey
+
+
+class Exchange(BaseModel):
+    """What the character last put in front of the learner; resets every time it speaks."""
+
+    posed_item_ids: list[str] = Field(default_factory=list)
+    highlighted_item_ids: list[str] = Field(default_factory=list)
+    help_level: int = Field(default=0, ge=0, le=2)
+    line_ids: list[str] = Field(default_factory=list)
+    intent_hint: str = ""
+    phrasebook_item_ids: list[str] = Field(default_factory=list)  # looked up this exchange
+
+
+class SceneRun(BaseModel):
+    scene_id: str
     turn: int = 0
-    world: World = Field(default_factory=World)
-    learning: LearningState | None = None
-    transcript: list[TranscriptEntry] = Field(default_factory=list)
+    started: bool = False
+    complete: bool = False
+    zones: dict[str, str] = Field(default_factory=dict)
+    goals_done: list[str] = Field(default_factory=list)
+    mood: str = NEUTRAL_MOOD
+    transcript: list[Entry] = Field(default_factory=list)
+    exchange: Exchange = Field(default_factory=Exchange)
+    spent: int = 0  # cash paid in this scene
+    # Fading support (soft guidance only): how often an owed word has come back un-highlighted.
+    unsupported_offers: dict[str, int] = Field(default_factory=dict)
+
+
+class Game(BaseModel):
+    """The story's ledgers. Code owns every field; the GM changes them only through tools."""
+
+    wallet: int = 0
+    minutes_used: int = 0
+    difficulty: Literal["story", "immersion"] = "story"
+    trust: dict[str, int] = Field(default_factory=dict)  # scene_id -> the character's trust
+    clues: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
+    prices: dict[str, dict[str, int]] = Field(default_factory=dict)  # scene_id -> haggled prices
+    paid_for: dict[str, list[str]] = Field(default_factory=dict)  # scene_id -> objects paid for
+    spent: int = 0
+    phrasebook: list[Phrase] = Field(default_factory=list)
+    ending_id: str | None = None
+
+
+class Journey(BaseModel):
+    journey_id: str
+    language: str
+    persona_id: str
+    created_at: str = Field(default_factory=_now)
+    schema_version: int = SCHEMA_VERSION
+    vocab: dict[str, VocabRecord] = Field(default_factory=dict)
+    scene_index: int = 0
+    scene: SceneRun | None = None
+    history: list[Summary] = Field(default_factory=list)
     attempts: dict[str, Attempt] = Field(default_factory=dict)
-    episode_complete: bool = False
-    schema_version: int = 1
+    game: Game = Field(default_factory=Game)
+
+    def record(self, item_id: str) -> VocabRecord:
+        return self.vocab.setdefault(item_id, VocabRecord())
 
 
-def new_game(cartridge: Cartridge, session_id: str) -> GameState:
-    """Fresh state: authored holders/fixtures, learning ledger at the first beat."""
-    from core.ledger import enter_beat
-
-    if not _SESSION_ID_RE.match(session_id):
-        raise ValueError(f"invalid session id {session_id!r}")
-    world = World(
-        holders={o.id: o.holder for o in cartridge.objects},
-        fixtures={f.id: f.initial for f in cartridge.fixtures},
-    )
-    state = GameState(session_id=session_id, cartridge_id=cartridge.id, world=world)
-    ll = cartridge.language_learning
-    if ll is not None:
-        state.learning = LearningState(
-            target_locale=ll.target_locale,
-            support_locale=ll.support_locale,
-            concept_stage={c.id: "unseen" for c in ll.concepts},
-            pattern_stage={p.id: "unseen" for p in ll.patterns},
-            exposures={c.id: 0 for c in ll.concepts},
-        )
-        enter_beat(state, cartridge, 0)
-    return state
+def line_audio_url(journey_id: str, line_id: str) -> str:
+    """Relative audio URL; the client appends the journey token."""
+    return f"/api/journeys/{journey_id}/lines/{line_id}/audio"
 
 
-def _session_path(session_id: str, root: Path) -> Path:
-    if not _SESSION_ID_RE.match(session_id):
-        raise ValueError(f"invalid session id {session_id!r}")
-    return Path(root) / "sessions" / f"{session_id}.json"
+def item_audio_url(journey_id: str, item_id: str) -> str:
+    return f"/api/journeys/{journey_id}/items/{item_id}/audio"
 
 
-def save_state(state: GameState, root: Path = STATES_ROOT) -> Path:
-    """Atomically write ``<root>/sessions/<session_id>.json`` (tmp + os.replace)."""
-    path = _session_path(state.session_id, root)
+def phrase_audio_url(journey_id: str, phrase_id: str) -> str:
+    return f"/api/journeys/{journey_id}/phrases/{phrase_id}/audio"
+
+
+def new_journey(
+    content: Content, journey_id: str, *, language: str, persona_id: str | None = None
+) -> Journey:
+    """A fresh journey with no scene entered yet. ``persona_id`` defaults to the first preset."""
+    if not _JOURNEY_ID_RE.match(journey_id):
+        raise ValueError(f"invalid journey id {journey_id!r}")
+    if language not in content.languages:
+        raise ValueError(f"unknown language {language!r}")
+    persona = persona_id or content.personas[0].id
+    if content.persona(persona) is None:
+        raise ValueError(f"unknown persona {persona!r}")
+    return Journey(journey_id=journey_id, language=language, persona_id=persona,
+                   game=Game(wallet=content.journey.wallet))
+
+
+def set_difficulty(journey: Journey, difficulty: str) -> None:
+    """Switch difficulty in place; it applies from the next turn."""
+    if difficulty not in DIFFICULTIES:
+        raise ValueError(f"difficulty must be one of {', '.join(DIFFICULTIES)}")
+    journey.game.difficulty = difficulty  # type: ignore[assignment]
+
+
+def set_persona(journey: Journey, content: Content, persona_id: str) -> None:
+    """Switch persona in place; it applies from the character's next reply."""
+    if content.persona(persona_id) is None:
+        raise ValueError(f"unknown persona {persona_id!r}")
+    journey.persona_id = persona_id
+
+
+def _journey_path(journey_id: str, root: Path) -> Path:
+    if not _JOURNEY_ID_RE.match(journey_id):
+        raise ValueError(f"invalid journey id {journey_id!r}")
+    return Path(root) / "journeys" / f"{journey_id}.json"
+
+
+def save_journey(journey: Journey, root: Path = STATES_ROOT) -> Path:
+    """Atomically write ``<root>/journeys/<journey_id>.json`` (tmp + os.replace)."""
+    path = _journey_path(journey.journey_id, root)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(state.model_dump_json(indent=1), encoding="utf-8")
+    tmp.write_text(journey.model_dump_json(indent=1), encoding="utf-8")
     os.replace(tmp, path)
     return path
 
 
-def load_state(session_id: str, root: Path = STATES_ROOT) -> GameState | None:
-    """Load a saved session, or None when it does not exist."""
-    path = _session_path(session_id, root)
+def load_journey(journey_id: str, root: Path = STATES_ROOT) -> Journey | None:
+    """Load a saved journey, or None when it does not exist."""
+    path = _journey_path(journey_id, root)
     if not path.is_file():
         return None
-    return GameState.model_validate_json(path.read_text(encoding="utf-8"))
+    return Journey.model_validate_json(path.read_text(encoding="utf-8"))

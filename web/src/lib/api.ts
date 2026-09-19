@@ -1,13 +1,17 @@
-// Typed REST client for the Polytale server (SPEC.md "REST API").
-// `?mock=1` swaps in an in-browser implementation of the same contract (mockApi.ts).
+// Typed REST client mirroring SPEC.md "REST". `?mock=1` swaps in an in-browser
+// implementation of the same contract (mockApi.ts).
 
 import type {
   ActBody,
-  CartridgeSummary,
-  CreateSessionResponse,
+  Catalog,
+  CreateJourneyResponse,
+  Health,
+  Difficulty,
   HelpResponse,
+  Phrase,
   PublicState,
-  Recap,
+  SceneBody,
+  Summary,
   Transcription,
   TurnResult,
 } from "./types";
@@ -25,25 +29,29 @@ export class ApiError extends Error {
 
 export interface Api {
   readonly mock: boolean;
-  health(): Promise<{ ok: boolean; speech_provider: string; tts_provider: string }>;
-  cartridges(): Promise<CartridgeSummary[]>;
-  /** Art URL for a cartridge-relative path like "art/cover.png" (no token needed). */
-  artUrl(cartridgeId: string, path: string): string;
-  createSession(cartridgeId: string): Promise<CreateSessionResponse>;
-  getState(sid: string, token: string): Promise<PublicState>;
-  start(sid: string, token: string): Promise<TurnResult>;
-  transcribe(sid: string, token: string, audio: Blob, clientRecordingId: string): Promise<Transcription>;
-  act(sid: string, token: string, body: ActBody): Promise<TurnResult>;
-  help(sid: string, token: string): Promise<HelpResponse>;
-  recap(sid: string, token: string): Promise<Recap>;
-  reset(sid: string, token: string): Promise<PublicState>;
-  /** Playable URL for a line's audio (appends `?token=`). */
-  audioSrc(sid: string, token: string, audioUrl: string, lineId: string): Promise<string>;
-  /** Any server URL that needs the session token as a query param (audio, art). */
-  withToken(url: string, token: string): string;
+  health(): Promise<Health>;
+  catalog(): Promise<Catalog>;
+  createJourney(body: { persona_id?: string; language?: string }): Promise<CreateJourneyResponse>;
+  getState(jid: string, token: string): Promise<PublicState>;
+  /** Enter the next (or named) scene and run the opening turn. */
+  enterScene(jid: string, token: string, body: SceneBody): Promise<TurnResult>;
+  transcribe(jid: string, token: string, audio: Blob): Promise<Transcription>;
+  act(jid: string, token: string, body: ActBody): Promise<TurnResult>;
+  help(jid: string, token: string): Promise<HelpResponse>;
+  persona(jid: string, token: string, personaId: string): Promise<PublicState>;
+  difficulty(jid: string, token: string, difficulty: Difficulty): Promise<PublicState>;
+  /** "How do I say...?": the learner's own support-language sentence, never a character line. */
+  phrase(jid: string, token: string, text: string): Promise<Phrase>;
+  phraseAudio(jid: string, token: string, phraseId: string, audioUrl?: string): Promise<string>;
+  finish(jid: string, token: string): Promise<Summary>;
+  reset(jid: string, token: string): Promise<PublicState>;
+  /** Playable URL for a line's audio (`?token=` appended). */
+  lineAudio(jid: string, token: string, lineId: string, audioUrl?: string): Promise<string>;
+  /** Playable URL for a bare item's audio (summary screen only). */
+  itemAudio(jid: string, token: string, itemId: string, audioUrl?: string): Promise<string>;
 }
 
-function withToken(url: string, token: string): string {
+export function withToken(url: string, token: string): string {
   if (!url) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}token=${encodeURIComponent(token)}`;
@@ -55,7 +63,7 @@ async function request<T>(
   opts: { token?: string; json?: unknown; form?: FormData; timeoutMs?: number } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
-  if (opts.token) headers["X-Session-Token"] = opts.token;
+  if (opts.token) headers["X-Journey-Token"] = opts.token;
   let body: BodyInit | undefined;
   if (opts.form) body = opts.form;
   else if (opts.json !== undefined) {
@@ -85,35 +93,38 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-const s = (sid: string) => `/api/sessions/${encodeURIComponent(sid)}`;
+const j = (jid: string) => `/api/journeys/${encodeURIComponent(jid)}`;
 
 export function createHttpApi(): Api {
   return {
     mock: false,
     health: () => request("GET", "/api/health"),
-    cartridges: () => request("GET", "/api/cartridges"),
-    // `path` is cartridge-relative (e.g. "art/cover.png"), matching core.views.art_url.
-    artUrl: (id, path) => `/api/cartridges/${encodeURIComponent(id)}/art/${path}`,
-    createSession: (cartridge_id) => request("POST", "/api/sessions", { json: { cartridge_id } }),
-    getState: (sid, token) => request("GET", s(sid), { token }),
-    start: (sid, token) => request("POST", `${s(sid)}/start`, { token, json: {} }),
-    transcribe: (sid, token, audio, clientRecordingId) => {
+    catalog: () => request("GET", "/api/catalog"),
+    createJourney: (body) => request("POST", "/api/journeys", { json: body }),
+    getState: (jid, token) => request("GET", j(jid), { token }),
+    enterScene: (jid, token, body) => request("POST", `${j(jid)}/scene`, { token, json: body, timeoutMs: 90_000 }),
+    transcribe: (jid, token, audio) => {
       const form = new FormData();
-      form.append("audio", audio, `${clientRecordingId}.wav`);
-      form.append("client_recording_id", clientRecordingId);
-      return request("POST", `${s(sid)}/transcribe`, { token, form, timeoutMs: 25_000 });
+      form.append("audio", audio, "attempt.wav");
+      return request("POST", `${j(jid)}/transcribe`, { token, form, timeoutMs: 25_000 });
     },
-    act: (sid, token, body) => request("POST", `${s(sid)}/act`, { token, json: body, timeoutMs: 90_000 }),
-    help: (sid, token) => request("POST", `${s(sid)}/help`, { token, json: {} }),
-    recap: (sid, token) => request("GET", `${s(sid)}/recap`, { token }),
-    reset: (sid, token) => request("POST", `${s(sid)}/reset`, { token, json: {} }),
-    audioSrc: async (sid, token, audioUrl, lineId) =>
-      withToken(audioUrl || `${s(sid)}/lines/${encodeURIComponent(lineId)}/audio`, token),
-    withToken,
+    act: (jid, token, body) => request("POST", `${j(jid)}/act`, { token, json: body, timeoutMs: 90_000 }),
+    help: (jid, token) => request("POST", `${j(jid)}/help`, { token, json: {} }),
+    persona: (jid, token, persona_id) => request("POST", `${j(jid)}/persona`, { token, json: { persona_id } }),
+    difficulty: (jid, token, difficulty) => request("POST", `${j(jid)}/difficulty`, { token, json: { difficulty } }),
+    phrase: (jid, token, text) => request("POST", `${j(jid)}/phrase`, { token, json: { text }, timeoutMs: 20_000 }),
+    phraseAudio: async (jid, token, phraseId, audioUrl) =>
+      withToken(audioUrl || `${j(jid)}/phrases/${encodeURIComponent(phraseId)}/audio`, token),
+    finish: (jid, token) => request("POST", `${j(jid)}/finish`, { token, json: {} }),
+    reset: (jid, token) => request("POST", `${j(jid)}/reset`, { token, json: {} }),
+    lineAudio: async (jid, token, lineId, audioUrl) =>
+      withToken(audioUrl || `${j(jid)}/lines/${encodeURIComponent(lineId)}/audio`, token),
+    itemAudio: async (jid, token, itemId, audioUrl) =>
+      withToken(audioUrl || `${j(jid)}/items/${encodeURIComponent(itemId)}/audio`, token),
   };
 }
 
-function isMock(): boolean {
+export function isMock(): boolean {
   try {
     const q = new URLSearchParams(window.location.search);
     return q.get("mock") === "1" || q.get("mock") === "true";

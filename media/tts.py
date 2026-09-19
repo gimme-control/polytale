@@ -25,7 +25,6 @@ from media.common import (
     SpeechTimeout,
     classify_exception,
     env_value,
-    language_name,
     log,
     pcm_to_wav,
     provider_chain,
@@ -37,8 +36,8 @@ VARIANTS = ("normal", "slow")
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_multilingual_v2"
-# "Sarah" (premade, available on every account): soft, young, clear female voice; with the
-# multilingual models it reads Japanese with clean standard pronunciation.
+# "Sarah" (premade, available on every account): soft, clear female voice that the
+# multilingual models carry across languages with clean standard pronunciation.
 # Override per NPC via voice.elevenlabs_voice_id or globally via ELEVENLABS_DEFAULT_VOICE_ID.
 DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
 # Only these models accept `language_code`; others reject the request if it is sent.
@@ -129,7 +128,8 @@ def gemini_tts_prompt(text: str, *, language: str, style: str, variant: str) -> 
         else "at a natural, unhurried pace"
     )
     return (
-        f"Speak the transcript below in {language_name(language)}. Voice direction: {style}. "
+        f"Speak the transcript below in its own language (locale {language}). "
+        f"Voice direction: {style}. "
         f"Use clear, natural, standard pronunciation that a beginner learner can follow, {pace}. "
         "Read the transcript verbatim: do not add, drop, translate, or explain anything, "
         "and do not read these instructions aloud.\n\n"

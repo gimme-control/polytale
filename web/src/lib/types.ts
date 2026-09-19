@@ -1,170 +1,274 @@
-// Runtime payloads — mirrors polytale/SPEC.md "Runtime payloads" exactly (snake_case).
+// Wire types. These mirror SPEC.md "Payloads" exactly (snake_case JSON).
+// Optional fields marked "extension" are tolerated when the server sends them and
+// never required.
 
-export type Gesture = "hold_up" | "point" | "offer" | "withhold" | "put_away";
-export type InputMode = "speech" | "text" | "tap";
-export type EvidenceType = "recognized" | "produced" | "transferred";
-export type Outcome = "understood" | "clarified" | "not_understood";
-export type Stage =
-  | "unseen"
-  | "context_recognized"
-  | "speech_recognized"
-  | "produced_with_cue"
-  | "produced_independently"
-  | "transferred";
+export interface Segment {
+  /** target-language text of one word or punctuation mark */
+  t: string;
+  /** its romanization; "" for punctuation and for languages without romanization */
+  r: string;
+}
 
-export interface SpokenLine {
+export interface Line {
   line_id: string;
-  speaker: string;
   speaker_name: string;
+  segments: Segment[];
   text: string;
-  language: string;
   romanization: string;
-  translation: string;
-  concept_ids: string[];
-  pattern_id: string | null;
+  item_ids: string[];
+  highlight_object_ids: string[];
   audio_url: string;
 }
 
-export interface NarrationEntry {
-  kind: "narration";
-  turn: number;
-  text: string;
-}
+export type InputMode = "speech" | "text" | "tap";
+
 export interface NpcEntry {
   kind: "npc";
   turn: number;
-  line: SpokenLine;
+  line: Line;
 }
-export interface PlayerEntry {
-  kind: "player";
+export interface DirectionEntry {
+  kind: "direction";
+  turn: number;
+  text: string;
+}
+export interface LearnerEntry {
+  kind: "learner";
   turn: number;
   attempt_id: string;
   input_mode: InputMode;
   transcript: string;
   romanized: string | null;
   tapped_object_id: string | null;
+  /** v3: the verb used on the object ("show", "take", ...); absent means point */
+  action_id?: string | null;
 }
-export interface EvidenceEntry {
-  kind: "evidence";
+export interface SceneEventEntry {
+  kind: "scene";
   turn: number;
-  beat_id: string;
-  concept_ids: string[];
-  evidence_type: EvidenceType;
-  outcome: Outcome;
-  /** concept_id -> resulting stage; null = no stage change (tap fallback / not_understood). */
-  stage_after: Record<string, Stage | string | null>;
-  support_level: number;
-  input_mode: InputMode;
+  event: "object_moved" | "goal_done";
+  object_id?: string;
+  from?: string;
+  to?: string;
+  goal_id?: string;
 }
-export type TranscriptEntry = NarrationEntry | NpcEntry | PlayerEntry | EvidenceEntry;
-
-export interface Focus {
-  object_id: string;
-  gesture: Gesture;
+export interface NarrationEntry {
+  kind: "narration";
+  turn: number;
+  text: string;
 }
-
-export interface World {
-  holders: Record<string, string>;
-  fixtures: Record<string, string>;
-  focus: Focus | null;
-  plate_url: string;
+export interface Clue {
+  id: string;
+  title: string;
+  text: string;
 }
+export interface ClueEntry {
+  kind: "clue";
+  turn: number;
+  clue: Clue;
+}
+export type Entry = NpcEntry | DirectionEntry | LearnerEntry | SceneEventEntry | NarrationEntry | ClueEntry;
 
-export interface LearningView {
-  active_beat: { id: string; objective: string; index: number; total: number } | null;
-  concept_stage: Record<string, Stage | string>;
-  pattern_stage: Record<string, Stage | string>;
-  help_level: number;
-  next_help: { level: number; label: string } | null;
-  tap_fallback: boolean;
+export interface Position {
+  x: number;
+  y: number;
+  h: number;
 }
 
-export type HelpKind = "replay_slow" | "word" | "frame" | "meaning" | "full";
+export interface ObjectAction {
+  id: string;
+  /** support-language verb, e.g. "Show", "Drink" */
+  label: string;
+}
 
-export interface HelpCue {
+export interface SceneObject {
+  id: string;
+  art_url: string;
+  price: number | null;
+  positions: Record<string, Position>;
+  /** v3 verbs; absent or empty means the object can only be pointed at */
+  actions?: ObjectAction[];
+}
+
+export interface SceneView {
+  id: string;
+  name: string;
+  tagline: string;
+  intro: string;
+  background_url: string;
+  mood_urls: Record<string, string>;
+  cover_url: string;
+  npc: { name: string; role: string; anchor: { x: number; y: number } };
+  objects: SceneObject[];
+  goals: { id: string; label: string }[];
+  target_count: number;
+}
+
+export interface NextHelp {
   level: number;
   label: string;
-  kind: HelpKind | string;
-  text?: string;
-  native?: string;
-  romanization?: string;
-  translation?: string;
-  line?: SpokenLine;
-  concepts?: { id: string; native: string; romanization: string }[];
-  frame?: { native: string; romanization: string };
 }
 
-export interface RecapProduction {
-  beat_id: string;
-  concept_id: string;
-  native: string;
-  romanization: string;
-  /** null = tap fallback (no spoken stage). */
-  stage: Stage | string | null;
-  support_level: number;
-  input_mode: InputMode;
-  transcript: string;
+export interface Progress {
+  goals_done: string[];
+  encountered: number;
+  target_count: number;
+  help_level: 0 | 1 | 2;
+  next_help: NextHelp | null;
 }
 
-export interface Recap {
-  recognized: { concept_id: string; native: string; romanization: string }[];
-  productions: RecapProduction[];
-  transfer: { achieved: boolean; summary: string };
+export type ItemState = "not_encountered" | "shaky" | "mastered";
+export type Outcome = "first_try" | "with_help" | "with_hint" | "missed";
+
+export interface SummaryItem {
+  item_id: string;
+  text: string;
+  roman: string;
+  gloss: string;
+  state: ItemState;
+  outcomes: string[];
+  produced: boolean;
+  recall: boolean;
+  heard?: boolean;
+  audio_url: string;
+}
+
+export interface SceneRef {
+  id: string;
+  name: string;
+  tagline: string;
+}
+
+export interface Summary {
+  scene_id: string;
+  scene_name: string;
+  items: SummaryItem[];
+  counts: { mastered: number; shaky: number; heard?: number; not_encountered: number };
+  recalled: string[];
   lines: string[];
-  next_episode: string;
+  next_scene: SceneRef | null;
+  phrasebook?: Phrase[];
+}
+
+export type Difficulty = "story" | "immersion";
+
+export interface GameView {
+  wallet: number;
+  clock: { label: string; time: string; minutes_left: number; minutes_total: number };
+  trust: number;
+  clues: Clue[];
+  difficulty: Difficulty;
+  prices: Record<string, number>;
+}
+
+export interface Ending {
+  id: string;
+  title: string;
+  text: string;
+  art_url: string;
+  stats: { minutes_left: number; wallet: number; clues: number; words_mastered: number; words_shaky: number };
+}
+
+export interface PhraseSegment extends Segment {
+  /** per-word gloss of the learner's OWN sentence; "" for punctuation */
+  g: string;
+}
+
+export interface Phrase {
+  phrase_id: string;
+  /** what the learner asked for, in the support language */
+  source: string;
+  segments: PhraseSegment[];
+  text: string;
+  romanization: string;
+  audio_url: string;
+  item_ids: string[];
+}
+
+export interface Story {
+  title: string;
+  tagline: string;
+  premise: string;
+  /** extension: title art for the start screen */
+  art_url?: string | null;
 }
 
 export interface TurnResult {
   turn: number;
-  narration: string;
-  spoken_lines: SpokenLine[];
-  world: World;
-  learning: LearningView;
-  evidence: EvidenceEntry[];
-  episode_complete: boolean;
-  recap: Recap | null;
+  lines: Line[];
+  /** v3: the story's voice, shown before the character speaks */
+  narration?: string | null;
+  game?: GameView;
+  ending?: Ending | null;
+  /** v2 only; v3 sends narration instead */
+  stage_direction?: string | null;
+  mood: string;
+  zones: Record<string, string>;
+  events: Entry[];
+  progress: Progress;
+  scene_complete: boolean;
+  summary: Summary | null;
   latency_ms: number;
 }
 
-export interface StagePlacement {
-  x: number;
-  y: number;
-  height: number;
-  /** Held-object anchor as fractions of the sprite box. */
-  hand?: { x: number; y: number } | null;
+export interface Language {
+  locale: string;
+  name: string;
+  native_name: string;
+  romanization_label: string | null;
+  word_spacing: boolean;
+  /** extension: prefix for price tags; digits only when absent */
+  currency_symbol?: string | null;
 }
 
-export interface CartridgeView {
+export interface Persona {
   id: string;
-  name: string;
-  tagline: string;
-  target_locale: string;
-  support_locale: string;
-  romanization_system: string;
-  location: { name: string; plate_url: string };
-  npcs: {
-    id: string;
-    name: string;
-    role: string;
-    sprite_url: string;
-    portrait_url: string;
-    stage: StagePlacement;
-  }[];
-  objects: { id: string; concept_id: string; icon_url: string; native: string; romanization: string }[];
-  fixtures: { id: string; name: string; states: string[]; hotspot: { x: number; y: number; r: number } }[];
+  label: string;
+  blurb: string;
+}
+
+export interface SceneCard extends SceneRef {
+  cover_url: string;
+  /** extension: lets the intro card show the scene's intro before POST /scene returns */
+  intro?: string;
+}
+
+export interface JourneyScene extends SceneCard {
+  status: string;
 }
 
 export interface PublicState {
-  session_id: string;
-  cartridge: CartridgeView;
+  journey_id: string;
+  language: Language;
+  persona_id: string;
+  personas: Persona[];
+  scene: SceneView | null;
   started: boolean;
   turn: number;
-  transcript: TranscriptEntry[];
-  world: World;
-  learning: LearningView | null;
-  episode_complete: boolean;
-  recap: Recap | null;
-  help_cue: HelpCue | null;
+  transcript: Entry[];
+  zones: Record<string, string>;
+  mood: string;
+  progress: Progress;
+  scene_complete: boolean;
+  summary: Summary | null;
+  scenes: JourneyScene[];
+  story?: Story;
+  game?: GameView;
+  ending?: Ending | null;
+  phrasebook?: Phrase[];
+}
+
+export interface Help {
+  level: number;
+  kind: "again" | "hint";
+  line_ids: string[];
+  highlight_object_ids: string[];
+  hint: string | null;
+}
+
+export interface HelpResponse {
+  help: Help;
+  progress: Progress;
 }
 
 export interface Transcription {
@@ -177,22 +281,31 @@ export interface Transcription {
   provider: string;
 }
 
-export interface CartridgeSummary {
-  id: string;
-  name: string;
-  tagline: string;
-  target_locale: string;
+export interface Catalog {
+  language: Language;
+  scenes: SceneCard[];
+  personas: Persona[];
+  /** extension: lets the title screen show the story before a journey exists */
+  story?: Story;
 }
 
-export interface CreateSessionResponse {
-  session_id: string;
+export interface Health {
+  ok: boolean;
+  speech_provider: string;
+  tts_provider: string;
+  language: string;
+}
+
+export interface CreateJourneyResponse {
+  journey_id: string;
   token: string;
   state: PublicState;
 }
 
-export interface HelpResponse {
-  cue: HelpCue;
-  learning: LearningView;
-}
+/** POST /act takes exactly one of these. */
+export type ActBody = { attempt_id: string } | { text: string } | { tap_object_id: string; action_id?: string };
 
-export type ActBody = { attempt_id: string } | { text: string } | { tap_object_id: string };
+export interface SceneBody {
+  scene_id?: string;
+  restart?: boolean;
+}

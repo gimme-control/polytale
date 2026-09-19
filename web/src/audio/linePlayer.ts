@@ -1,9 +1,19 @@
-// NPC line playback: sequential queue, replay, slow replay (0.7x, pitch preserved),
-// volume. Text is always shown first; audio failing (e.g. TTS 503) never blocks.
+// Character line playback: a sequential queue with replay and slow replay (pitch
+// preserved) and a volume setting. The line is announced to listeners as soon as its
+// turn in the queue begins, so text never waits on audio; when a clip fails (TTS
+// down, 404) the line is simply held for a reading-length pause instead.
 
 type Listener = (lineId: string | null, rate: number) => void;
 
+export interface QueueItem {
+  lineId: string;
+  src: () => Promise<string>;
+  /** how long to hold the line when its audio cannot play */
+  fallbackMs: number;
+}
+
 const VOL_KEY = "polytale.volume";
+const GAP_MS = 240;
 
 function readVolume(): number {
   try {
@@ -14,13 +24,23 @@ function readVolume(): number {
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+
 class LinePlayer {
   private el: HTMLAudioElement | null = null;
   private gen = 0;
   private listeners = new Set<Listener>();
-  private failed = new Set<string>();
   volume = readVolume();
   current: string | null = null;
+  /** true while a clip is actually sounding (not merely queued or loading) */
+  audible = false;
+  onAudible: ((on: boolean) => void) | null = null;
+
+  private setAudible(on: boolean) {
+    if (this.audible === on) return;
+    this.audible = on;
+    this.onAudible?.(on);
+  }
 
   on(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -30,10 +50,6 @@ class LinePlayer {
   private emit(id: string | null, rate: number) {
     this.current = id;
     for (const l of this.listeners) l(id, rate);
-  }
-
-  hasFailed(lineId: string): boolean {
-    return this.failed.has(lineId);
   }
 
   setVolume(v: number) {
@@ -50,16 +66,17 @@ class LinePlayer {
     this.gen++;
     if (this.el) {
       this.el.pause();
-      this.el.src = "";
+      this.el.removeAttribute("src");
       this.el = null;
     }
+    this.setAudible(false);
     if (this.current) this.emit(null, 1);
   }
 
-  /** Play one clip; resolves when it ends, fails, or is superseded. */
-  private playOne(lineId: string, src: string, rate: number, gen: number): Promise<void> {
+  /** Play one clip; resolves true when it played through, false when it failed. */
+  private playOne(src: string, rate: number, gen: number): Promise<boolean> {
     return new Promise((resolve) => {
-      if (gen !== this.gen) return resolve();
+      if (gen !== this.gen) return resolve(true);
       const el = new Audio();
       el.preload = "auto";
       el.volume = this.volume;
@@ -69,46 +86,50 @@ class LinePlayer {
       el.src = src;
       this.el = el;
       let done = false;
-      const finish = (failed: boolean) => {
+      const finish = (ok: boolean) => {
         if (done) return;
         done = true;
-        if (failed) this.failed.add(lineId);
         window.clearTimeout(guard);
         if (this.el === el) this.el = null;
-        resolve();
+        this.setAudible(false);
+        resolve(ok);
       };
       // A stuck clip must never wedge the queue.
-      const guard = window.setTimeout(() => finish(false), 20_000);
-      el.onended = () => finish(false);
-      el.onerror = () => finish(true);
-      // "Speaking" means audible: mark it when playback actually starts, not while
-      // the clip is still being synthesized/fetched.
+      const guard = window.setTimeout(() => finish(true), 20_000);
       el.onplaying = () => {
-        if (gen === this.gen && !done) this.emit(lineId, rate);
+        if (gen === this.gen && !done) this.setAudible(true);
       };
-      el.play().catch(() => finish(true));
+      el.onended = () => finish(true);
+      el.onerror = () => finish(false);
+      el.play().catch(() => finish(false));
     });
   }
 
-  /** Play clips in order, replacing anything playing. */
-  async playSequence(items: { lineId: string; src: () => Promise<string> }[], rate = 1): Promise<void> {
+  /** Play clips in order, replacing anything playing. Resolves when the queue drains. */
+  async playSequence(items: QueueItem[], rate = 1): Promise<void> {
     this.stop();
     const gen = this.gen;
     for (const it of items) {
       if (gen !== this.gen) return;
-      let src = "";
+      this.emit(it.lineId, rate);
+      let ok = false;
       try {
-        src = await it.src();
+        ok = await this.playOne(await it.src(), rate, gen);
       } catch {
-        this.failed.add(it.lineId);
-        continue;
+        ok = false;
       }
-      await this.playOne(it.lineId, src, rate, gen);
       if (gen !== this.gen) return;
-      // A breath between lines.
-      await new Promise((r) => setTimeout(r, 260));
+      if (!ok) await sleep(it.fallbackMs / rate);
+      if (gen !== this.gen) return;
+      await sleep(GAP_MS);
     }
     if (gen === this.gen) this.emit(null, 1);
+  }
+
+  /** A single clip outside the line queue (summary word audio). */
+  async playClip(src: string): Promise<boolean> {
+    this.stop();
+    return this.playOne(src, 1, this.gen);
   }
 }
 

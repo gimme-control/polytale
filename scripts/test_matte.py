@@ -16,11 +16,14 @@ sys.path.insert(0, str(ROOT))
 
 from tools.matte import (  # noqa: E402
     PROMPT_KEY_RGB,
+    drop_faint_islands,
     drop_small_islands,
     key_like_mask,
     matte_cutout,
     purge_key,
     remove_hairlines,
+    soft_key_cutout,
+    solidify,
     trim_to_subject,
 )
 
@@ -128,6 +131,85 @@ def test_hairlines_removed_solid_kept() -> None:
     a = _alpha(remove_hairlines(img, width=2))
     assert a[50, 70] == 0
     assert a[50, 80] == 255 and a[35, 35] == 255 and a[10, 10] == 255
+
+
+def _screen_scene(key: tuple[int, int, int]) -> Image.Image:
+    """Opaque amber block, a 50% 'glass' pane and a contact shadow on a chroma screen."""
+    img = Image.new("RGB", (300, 300), key)
+    d = ImageDraw.Draw(img)
+    d.rectangle((40, 60, 120, 240), fill=(170, 90, 30))  # opaque amber bottle
+    glass = tuple((k + w) // 2 for k, w in zip(key, (235, 235, 235)))
+    d.rectangle((180, 60, 260, 240), fill=glass)  # pane: half key, half near-white
+    shadow = tuple(int(k * 0.5) for k in key)
+    d.rectangle((40, 241, 120, 250), fill=shadow)  # darker key under the bottle
+    return img
+
+
+def test_soft_key_green_glass_and_shadow() -> None:
+    out = np.asarray(soft_key_cutout(_screen_scene((0, 255, 0)))).astype(int)
+    a = out[..., 3]
+    assert a[5, 5] == 0 and a[150, 150] == 0  # backdrop gone
+    assert a[150, 80] == 255 and tuple(out[150, 80, :3]) == (170, 90, 30)  # solid kept exact
+    assert 90 <= a[150, 220] <= 170, a[150, 220]  # glass is semi-transparent
+    r, g, b = out[150, 220, :3]
+    assert g <= max(r, b) and min(r, b) > 200, (r, g, b)  # de-spilled back to near-white
+    assert 90 <= a[245, 80] <= 170 and out[245, 80, :3].max() < 25  # shadow = translucent black
+
+
+def test_soft_key_dim_glass_stays_neutral() -> None:
+    # Glass that dims the screen and adds a grey sheen must key to neutral grey,
+    # not magenta (the failure when colour is recovered with the levelled alpha).
+    img = Image.new("RGB", (120, 120), (0, 255, 0))
+    ImageDraw.Draw(img).rectangle((30, 30, 90, 90), fill=(40, 240, 40))
+    out = np.asarray(soft_key_cutout(img)).astype(int)
+    r, g, b, a = out[60, 60]
+    assert 0 < a < 80, a
+    assert abs(r - b) <= 6 and g <= max(r, b) and max(r, b) - g <= 12, (r, g, b)
+
+
+def test_soft_key_blue_keeps_greens() -> None:
+    img = _screen_scene((0, 0, 255))
+    ImageDraw.Draw(img).rectangle((130, 100, 170, 140), fill=(90, 160, 60))  # scallion green
+    out = np.asarray(soft_key_cutout(img)).astype(int)
+    assert out[5, 5, 3] == 0
+    assert out[120, 150, 3] == 255 and tuple(out[120, 150, :3]) == (90, 160, 60)
+
+
+def test_soft_key_rejects_non_screen() -> None:
+    for bg in ((240, 240, 240), (200, 30, 30), (40, 40, 40)):
+        try:
+            soft_key_cutout(Image.new("RGB", (64, 64), bg))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted backdrop {bg}")
+
+
+def test_faint_haze_dropped_attached_steam_kept() -> None:
+    img = Image.new("RGBA", (600, 600), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle((250, 300, 350, 500), fill=(150, 80, 40, 255))  # solid cup
+    d.rectangle((280, 200, 320, 299), fill=(255, 255, 255, 60))  # steam touching the cup
+    d.rectangle((40, 60, 560, 90), fill=(255, 255, 255, 30))  # detached screen-lighting band
+    a = _alpha(drop_faint_islands(img))
+    assert a[75, 300] == 0, "detached haze must go"
+    assert a[250, 300] == 60, "steam attached to the solid must stay"
+    assert a[400, 300] == 255
+
+
+def test_solidify_restores_key_hued_print() -> None:
+    # A white-bordered photo whose picture contains a green light, shot on green.
+    img = Image.new("RGB", (300, 300), (0, 255, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle((60, 60, 240, 240), fill=(240, 240, 235))
+    d.rectangle((80, 80, 220, 200), fill=(30, 30, 60))
+    d.ellipse((130, 120, 170, 160), fill=(40, 230, 90))  # green bokeh inside the print
+    d.rectangle((60, 241, 240, 250), fill=(0, 120, 0))  # contact shadow outside it
+    keyed = soft_key_cutout(img)
+    assert _alpha(keyed)[140, 150] < 120, "precondition: the keyer punches the green light"
+    out = np.asarray(solidify(keyed, img)).astype(int)
+    assert tuple(out[140, 150]) == (40, 230, 90, 255)
+    assert out[5, 5, 3] == 0 and 60 < out[245, 150, 3] < 200  # backdrop gone, shadow kept
+    assert out[61, 61, 3] > 0 and out[150, 70, 3] == 255
 
 
 def test_islands_and_trim_padding() -> None:

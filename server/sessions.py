@@ -1,7 +1,7 @@
-"""Session store: persisted GameState, capability tokens, and one-turn-at-a-time locks.
+"""Journey store: persisted state, capability tokens, one-turn-at-a-time locks, content cache.
 
-Single process only: locks live in memory. State and token hashes persist under ``states/``
-so a server restart (or a browser refresh) resumes the same session.
+Single process only: locks live in memory. Journeys and token hashes persist under ``states/``
+so a restart or a browser refresh resumes the same journey.
 """
 
 from __future__ import annotations
@@ -13,17 +13,27 @@ import json
 import os
 import secrets
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 
-from core.cartridge import Cartridge, load_cartridge
-from core.state import GameState, load_state, new_game, save_state
+from core.content import CONTENT_ROOT, Content, load_content
+from core.state import Journey, load_journey, new_journey, save_journey
 
 ROOT = Path(__file__).resolve().parents[1]
 STATES_DIR = Path(os.environ.get("POLYTALE_STATES_DIR", ROOT / "states"))
 
+_cached: tuple[tuple[float, ...], Content] | None = None
 
-class SessionNotFound(LookupError):
+
+def content() -> Content:
+    """Validated content, reloaded when any content JSON changes on disk."""
+    global _cached
+    signature = tuple(p.stat().st_mtime for p in sorted(CONTENT_ROOT.rglob("*.json")))
+    if _cached is None or _cached[0] != signature:
+        _cached = (signature, load_content())
+    return _cached[1]
+
+
+class JourneyNotFound(LookupError):
     pass
 
 
@@ -31,52 +41,47 @@ class BadToken(PermissionError):
     pass
 
 
-@lru_cache(maxsize=16)
-def cartridge(cartridge_id: str) -> Cartridge:
-    return load_cartridge(cartridge_id)
-
-
 def _digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 @dataclass
-class SessionStore:
+class JourneyStore:
     root: Path = STATES_DIR
     _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
 
-    def _auth_path(self, session_id: str) -> Path:
-        return self.root / "auth" / f"{session_id}.json"
+    def _auth_path(self, journey_id: str) -> Path:
+        return self.root / "auth" / f"{journey_id}.json"
 
-    def create(self, cartridge_id: str) -> tuple[GameState, str]:
-        cart = cartridge(cartridge_id)
-        session_id = secrets.token_urlsafe(12)
+    def create(self, *, language: str, persona_id: str | None) -> tuple[Journey, str]:
+        journey_id = secrets.token_urlsafe(12)
         token = secrets.token_urlsafe(24)
-        state = new_game(cart, session_id)
-        save_state(state, self.root)
-        path = self._auth_path(session_id)
+        journey = new_journey(content(), journey_id, language=language, persona_id=persona_id)
+        save_journey(journey, self.root)
+        path = self._auth_path(journey_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"token_sha256": _digest(token)}))
-        return state, token
+        return journey, token
 
-    def authorize(self, session_id: str, token: str | None) -> GameState:
-        """Load a session after checking its token. Unknown → SessionNotFound; bad → BadToken."""
-        path = self._auth_path(session_id)
-        state = load_state(session_id, self.root) if path.is_file() else None
-        if state is None:
-            raise SessionNotFound(session_id)
+    def authorize(self, journey_id: str, token: str | None) -> Journey:
+        """Load a journey after checking its token. Unknown → JourneyNotFound; bad → BadToken."""
+        path = self._auth_path(journey_id)
+        journey = load_journey(journey_id, self.root) if path.is_file() else None
+        if journey is None:
+            raise JourneyNotFound(journey_id)
         expected = json.loads(path.read_text())["token_sha256"]
         if not token or not hmac.compare_digest(expected, _digest(token)):
-            raise BadToken(session_id)
-        return state
+            raise BadToken(journey_id)
+        return journey
 
-    def save(self, state: GameState) -> None:
-        save_state(state, self.root)
+    def save(self, journey: Journey) -> None:
+        save_journey(journey, self.root)
 
-    def reset(self, state: GameState) -> GameState:
-        fresh = new_game(cartridge(state.cartridge_id), state.session_id)
-        save_state(fresh, self.root)
+    def reset(self, journey: Journey) -> Journey:
+        fresh = new_journey(content(), journey.journey_id, language=journey.language,
+                            persona_id=journey.persona_id)
+        save_journey(fresh, self.root)
         return fresh
 
-    def lock(self, session_id: str) -> asyncio.Lock:
-        return self._locks.setdefault(session_id, asyncio.Lock())
+    def lock(self, journey_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(journey_id, asyncio.Lock())

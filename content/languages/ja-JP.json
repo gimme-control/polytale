@@ -1,0 +1,284 @@
+{
+  "locale": "ja-JP",
+  "name": "Japanese",
+  "native_name": "日本語",
+  "romanization": {
+    "system": "Hepburn romaji",
+    "label": "Romaji"
+  },
+  "word_spacing": false,
+  "currency_symbol": "¥",
+  "typing_note": "Learners often type romaji without macrons or spaces (\"biru\", \"arigato\", \"ikura\"). Treat it as the word itself.",
+  "phrasebook_voice": {
+    "gemini_voice": "Achird",
+    "elevenlabs_voice_id": "",
+    "style": "A clear, neutral, friendly voice saying one short phrase at an easy pace, for someone to copy."
+  },
+  "items": {
+    "hello": {
+      "text": "こんばんは",
+      "roman": "konbanwa",
+      "gloss": "hello (in the evening)",
+      "kind": "phrase"
+    },
+    "thanks": {
+      "text": "ありがとう",
+      "roman": "arigatō",
+      "gloss": "thanks",
+      "kind": "phrase"
+    },
+    "want": {
+      "text": "ください",
+      "roman": "kudasai",
+      "gloss": "… please (I'll have …)",
+      "kind": "phrase"
+    },
+    "this": {
+      "text": "これ",
+      "roman": "kore",
+      "gloss": "this one",
+      "kind": "phrase"
+    },
+    "how_much": {
+      "text": "いくら",
+      "roman": "ikura",
+      "gloss": "how much (is it)?",
+      "kind": "phrase",
+      "learner_side": true
+    },
+    "money": {
+      "text": "お金",
+      "roman": "okane",
+      "gloss": "money",
+      "kind": "noun"
+    },
+    "menu": {
+      "text": "メニュー",
+      "roman": "menyū",
+      "gloss": "menu",
+      "kind": "noun"
+    },
+    "beer": {
+      "text": "ビール",
+      "roman": "bīru",
+      "gloss": "beer",
+      "kind": "noun"
+    },
+    "water": {
+      "text": "お水",
+      "roman": "omizu",
+      "gloss": "water",
+      "kind": "noun"
+    },
+    "tea": {
+      "text": "お茶",
+      "roman": "ocha",
+      "gloss": "tea",
+      "kind": "noun"
+    },
+    "noodles": {
+      "text": "ラーメン",
+      "roman": "rāmen",
+      "gloss": "noodles (ramen)",
+      "kind": "noun"
+    },
+    "dumplings": {
+      "text": "餃子",
+      "roman": "gyōza",
+      "gloss": "dumplings",
+      "kind": "noun"
+    },
+    "spicy": {
+      "text": "辛い",
+      "roman": "karai",
+      "gloss": "spicy",
+      "kind": "adjective"
+    },
+    "friend": {
+      "text": "友達",
+      "roman": "tomodachi",
+      "gloss": "friend",
+      "kind": "noun"
+    },
+    "where": {
+      "text": "どこ",
+      "roman": "doko",
+      "gloss": "where (is …)?",
+      "kind": "phrase"
+    },
+    "baijiu": {
+      "text": "焼酎",
+      "roman": "shōchū",
+      "gloss": "the house spirit (strong)",
+      "kind": "noun"
+    },
+    "cheers": {
+      "text": "乾杯",
+      "roman": "kanpai",
+      "gloss": "cheers!",
+      "kind": "phrase"
+    },
+    "scarf": {
+      "text": "マフラー",
+      "roman": "mafurā",
+      "gloss": "scarf",
+      "kind": "noun"
+    },
+    "too_expensive": {
+      "text": "高い",
+      "roman": "takai",
+      "gloss": "too expensive!",
+      "kind": "phrase"
+    },
+    "cheaper": {
+      "text": "安くして",
+      "roman": "yasuku shite",
+      "gloss": "a bit cheaper",
+      "kind": "phrase"
+    },
+    "yes": {
+      "text": "はい",
+      "roman": "hai",
+      "gloss": "yes / right",
+      "kind": "phrase"
+    },
+    "good": {
+      "text": "いい",
+      "roman": "ii",
+      "gloss": "good / OK",
+      "kind": "adjective"
+    },
+    "no_want": {
+      "text": "いらない",
+      "roman": "iranai",
+      "gloss": "no thanks / don't want",
+      "kind": "phrase"
+    },
+    "not_spicy": {
+      "text": "辛くない",
+      "roman": "karakunai",
+      "gloss": "not spicy",
+      "kind": "adjective"
+    },
+    "delicious": {
+      "text": "おいしい",
+      "roman": "oishii",
+      "gloss": "delicious",
+      "kind": "adjective"
+    },
+    "photo": {
+      "text": "写真",
+      "roman": "shashin",
+      "gloss": "photo",
+      "kind": "noun"
+    },
+    "tab": {
+      "text": "お勘定",
+      "roman": "okanjō",
+      "gloss": "the bill / tab",
+      "kind": "noun"
+    },
+    "night_market": {
+      "text": "夜市",
+      "roman": "yoichi",
+      "gloss": "night market",
+      "kind": "noun"
+    },
+    "station": {
+      "text": "駅",
+      "roman": "eki",
+      "gloss": "station",
+      "kind": "noun"
+    },
+    "platform": {
+      "text": "ホーム",
+      "roman": "hōmu",
+      "gloss": "platform",
+      "kind": "noun"
+    },
+    "train": {
+      "text": "電車",
+      "roman": "densha",
+      "gloss": "train",
+      "kind": "noun"
+    },
+    "number_two": {
+      "text": "二番",
+      "roman": "niban",
+      "gloss": "number two",
+      "kind": "phrase"
+    },
+    "she": {
+      "text": "彼女",
+      "roman": "kanojo",
+      "gloss": "she / her",
+      "kind": "pronoun"
+    },
+    "seen": {
+      "text": "見た",
+      "roman": "mita",
+      "gloss": "have seen",
+      "kind": "verb"
+    },
+    "left": {
+      "text": "行った",
+      "roman": "itta",
+      "gloss": "left / gone",
+      "kind": "verb"
+    },
+    "one_more": {
+      "text": "もう一つ",
+      "roman": "mō hitotsu",
+      "gloss": "one more",
+      "kind": "phrase"
+    },
+    "kuai": {
+      "text": "円",
+      "roman": "en",
+      "gloss": "yuan (money unit)",
+      "kind": "noun"
+    },
+    "five": {
+      "text": "五",
+      "roman": "go",
+      "gloss": "5",
+      "kind": "number"
+    },
+    "eight": {
+      "text": "八",
+      "roman": "hachi",
+      "gloss": "8",
+      "kind": "number"
+    },
+    "ten": {
+      "text": "十",
+      "roman": "jū",
+      "gloss": "10",
+      "kind": "number"
+    },
+    "twelve": {
+      "text": "十二",
+      "roman": "jūni",
+      "gloss": "12",
+      "kind": "number"
+    },
+    "fifteen": {
+      "text": "十五",
+      "roman": "jūgo",
+      "gloss": "15",
+      "kind": "number"
+    },
+    "twenty": {
+      "text": "二十",
+      "roman": "nijū",
+      "gloss": "20",
+      "kind": "number"
+    },
+    "thirty": {
+      "text": "三十",
+      "roman": "sanjū",
+      "gloss": "30",
+      "kind": "number"
+    }
+  }
+}

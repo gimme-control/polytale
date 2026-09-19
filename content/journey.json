@@ -1,0 +1,61 @@
+{
+  "title": "The Last Train",
+  "tagline": "Find Mei before 23:55.",
+  "premise": "Your flight landed four hours late and your phone died somewhere over the mountains. Mei was supposed to meet you. All you have is a polaroid of her, ¥60, and the name of a bar she likes. The last train out leaves at 23:55. Nobody here speaks English.",
+  "gm_brief": "THE TRUTH. Mei is the player's old friend; she lives in this city and takes the last train home to her own town every Friday. Tonight she waited two hours for the player at The Corner Bar (her regular place), decided she had been stood up, left upset without paying her tab, went to eat at Lin's stall in the night market (her comfort ritual), left her red scarf there, and is now heading for the station: last train, platform 2. The player's flight was late and their phone is dead; none of this is anyone's fault, which is what makes it funny and a little sad. THE CHAIN. Bar: Chen knows where she went (the night market, Lin's stall) but protects his regulars from strangers. Market: Lin knows where she is going (platform 2) but only talks to customers, and only to someone who proves they are the friend. Each of them can be won more than one way: money, manners, nerve, or a shared drink or dare. Each has a sense of humour and their own pride; play that. TONE. A warm, wry night-in-a-strange-city story: small stakes that feel big, physical comedy of not sharing a language, real kindness under gruff surfaces. Never grim, never slapstick. The player can be clumsy, rude or broke and the story still moves: doors close, other doors open, the clock keeps running. RESOURCES. The player cannot afford everything: ¥60 has to cover both acts. Every turn costs minutes. Drinking alcohol makes the narration looser and a touch braver from then on (never incapable).",
+  "wallet": 60,
+  "clock": {
+    "label": "Last train",
+    "start": "22:40",
+    "end": "23:55",
+    "minutes_per_turn": 3
+  },
+  "scenes": [
+    "bar",
+    "market"
+  ],
+  "endings": [
+    {
+      "id": "reunited",
+      "title": "Time to Spare",
+      "art": "art/ending_reunited.webp",
+      "when": {
+        "clues": [
+          "platform"
+        ],
+        "minutes_left_at_least": 20
+      },
+      "text": "Platform 2. She is on a bench under the departures board, shoes off, losing an argument with a vending machine. \"You are FOUR HOURS late,\" Mei says, and then she is hugging you hard enough to hurt. There is time to buy two teas and tell her everything: the bartender, the tab, the woman with the ladle. She is laughing before the train even pulls in."
+    },
+    {
+      "id": "seconds",
+      "title": "By Seconds",
+      "art": "art/ending_reunited.webp",
+      "when": {
+        "clues": [
+          "platform"
+        ],
+        "clock_left": true
+      },
+      "text": "You take the station stairs three at a time. Platform 2, doors beeping, and there, red-eyed, one foot already on the train: Mei. You yell her name with everything you have left. She turns. The doors close behind both of you, and you ride out into the dark being told off in two languages. Worth every minute."
+    },
+    {
+      "id": "scarf",
+      "title": "Missed It, But…",
+      "art": "art/ending_late.webp",
+      "when": {
+        "flags": [
+          "scarf_taken"
+        ]
+      },
+      "text": "23:55 comes and goes; somewhere across town the last train leaves without you. You are still in the market, holding a red scarf and a sinking feeling, when someone behind you says your name. Mei. She came back for the scarf. She missed the train too. \"You look terrible,\" she says, delighted. Two more bowls are already landing on the counter."
+    },
+    {
+      "id": "late",
+      "title": "The Long Night",
+      "art": "art/ending_late.webp",
+      "when": {},
+      "text": "The last train leaves without you, and you never quite worked out where she went. You spend the small hours over the cheapest thing on the shelf while the city goes quiet. At dawn the door opens. Mei: furious, exhausted, holding two coffees. \"I checked every bar in this town,\" she says. \"Twice.\" You found each other in the end. It just took all night."
+    }
+  ]
+}

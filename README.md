@@ -1,65 +1,66 @@
-# Polytale (working title: Relay)
+# Polytale
 
-**Learn a language by needing it.** A voice-first adventure where an absolute beginner learns to
-speak Japanese by making themselves understood to an airship engineer who barely speaks English.
+**Learn a language by needing it.** Polytale drops you into a concrete situation, such as a
+late-night bar or a night-market stall, where the only other person speaks the language you are
+learning. You get things done by speaking, typing, or pointing. Nothing is translated. You work
+out what words mean from what you can see, and the scene changes when you are understood.
 
-The demo episode, *The Broken Airship*, runs 3–5 minutes:
+The demo language is Mandarin Chinese. The engine is language-agnostic: a language is one JSON
+file (`content/languages/<locale>.json`) and scenes are language-neutral.
 
-1. **Recognition.** Hana holds up a key: 「鍵。」 *kagi*. You say it back, or tap it.
-2. **Supported production.** She holds the key out of reach and models 「鍵をください」
-   *kagi o kudasai*. You ask for it (broken, mixed, "key… kudasai" all count), she recasts
-   it naturally and hands it over. The engine panel opens.
-3. **Transfer.** She holds up a map: 「地図」 *chizu*. Nobody shows you the sentence this time.
-   You reuse the pattern, she hands you the map, and the airship launches.
+## What playing it is like
 
-The end card reports only what the ledger observed ("You reused the request for the map without
-the full phrase"). It never shows a fluency score.
+- You sit down at the bar. The bartender says something, generated live, and glances at the
+  shelf: 「啤酒？」 *píjiǔ?* The beer bottle lights up. 「水？」 *shuǐ?* The glass lights up.
+- You say "píjiǔ", type `pijiu`, or click the bottle. He slides it across the counter.
+- You want to pay. You try 「多少钱？」 or point at your wallet. He tells you the price, you hand
+  over the notes, and the scene is done.
+- Only then do you see the word list: what you met, what you got first try, what needed a repeat
+  or a hint.
+- The next scene is a night-market stall. The words you mastered at the bar come back with no
+  highlight and no hint. Getting them anyway is the proof that you learned them.
+
+You can change the character's personality at any time (warm, brisk, unhinged). That changes how
+they talk to you and never what the scene teaches. Try English on them: they won't understand,
+and they won't break character.
 
 ## How it works
 
-- **The LLM runs the scene, code owns the ledgers.** A Gemini DM reads a scene snapshot and
-  commits every change through typed tools (`show_object`, `give`, `set_fixture`,
-  `record_language_evidence`, `set_language_help`, `advance_beat`, `deliver_narration`).
-  Executors validate ids and apply deterministic rules. The learning stages are
-  `unseen → context_recognized → speech_recognized → produced_with_cue →
-  produced_independently → transferred`.
-- **Honest evidence.** Support level comes from the server's help ledger, not the model. If the
-  full phrase was modeled or the frame was shown, production counts as *with cue*. Tapping never
-  counts as speech, and recognition confidence never counts as learning.
-- **Help ladder (0–5).** Context → hear it slowly → the word → a phrase frame → a meaning hint →
-  the full answer plus a tap fallback. Each press goes up exactly one level. A reused pattern
-  starts lower than it did last time.
-- **Voice.** Push-to-talk records 16 kHz WAV. The server transcribes it, and the client shows
-  "Heard: …" with Cancel / Retry before anything touches the world. NPC lines arrive as text
-  first; audio follows (ElevenLabs when `ELEVENLABS_API_KEY` is set, otherwise Gemini), with
-  replay and slow replay. Romanization always sits under the native text. Translations stay
-  hidden until you ask.
+- **The LLM plays the character; code owns the ledgers.** A Gemini model reads a scene snapshot
+  and commits every change through typed tools (`move_object`, `record_item`, `complete_goal`,
+  `say`). Executors validate ids and apply deterministic rules. Model prose is never inspected or
+  rewritten.
+- **Mastery falls out of play.** The server tracks how much help each exchange needed. A correct
+  response with no help marks the word mastered. One that needed a repeat, a highlight, or an
+  intent hint marks it shaky, and so does a miss. Mastered words can no longer be highlighted;
+  the tool layer refuses.
+- **Help is two steps:** hear it again slowly with the objects lit, then a hint about what the
+  character wants. There is never a translation.
+- **Speech:** character lines are text first and audio right after (ElevenLabs when
+  `ELEVENLABS_API_KEY` is set, otherwise Gemini), with per-word romanization drawn over the text.
+  You can type, or hold the mic or Space to talk; "Heard: …" can be cancelled before it counts.
+- **Art is pre-generated** (`scripts/generate_art.py`). Highlights are drawn by the client, never
+  by an image model.
 
-`SPEC.md` is the full build contract. `AGENTS.md` has the conventions.
+`SPEC.md` is the build contract, `docs/PRD.md` the product doc, `AGENTS.md` the conventions.
 
 ## Run
 
 ```bash
 python3 -m venv ~/.venvs/polytale && ~/.venvs/polytale/bin/pip install -r requirements.txt
-cp .env.example .env            # set GEMINI_API_KEY (and optionally ELEVENLABS_API_KEY)
+cp .env.example .env            # set GEMINI_API_KEY (optionally ELEVENLABS_API_KEY)
 bash run.sh                     # http://localhost:5180  (API on :8100)
+bash run.sh --stop
 ```
 
-Before a demo, run `PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/warm_cache.py` to
-pre-synthesize the authored audio. Art is pre-generated (`scripts/generate_art.py`) and never
-generated at runtime. `?mock=1` runs the client against an in-browser mock of the API.
+`?mock=1` runs the client against an in-browser mock of the API.
 
 ## Tests
 
-Offline: `verify_imports`, `test_cartridge_schema`, `test_ledger`, `test_dm_tools`,
-`test_dm_loop_offline`, `test_recap`, `test_speech_providers`, `test_server_api`, `test_matte`,
-`test_run_sh` (dev runner: stale servers, reruns, Ctrl-C, foreign port owners),
-`test_web_contract`.
-Live (needs keys and a running server): `test_dm_live`, `test_speech_live`,
-`playtest_voice_live` (recorded learner audio → STT → DM → TTS over HTTP),
-`playtest_edges_live` (English-only, early map request, gibberish, tap fallback),
-`playtest_browser_live` (headless Chrome with injected mic audio), `playtest_web_mock`.
+Standalone scripts, no pytest: `PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/<name>.py`
 
-```bash
-PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/<name>.py
-```
+Offline: `verify_imports`, `test_content`, `test_vocab`, `test_tools`, `test_dm_offline`,
+`test_summary`, `test_language_agnostic`, `test_speech_providers`, `test_server_api`,
+`test_web_contract`, `test_run_sh`, `test_matte`.
+Live (needs keys; a running server for the playtests): `test_dm_live`, `test_speech_live`,
+`playtest_voice_live`, `playtest_browser_live`, `playtest_web_mock`.

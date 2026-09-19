@@ -141,8 +141,3 @@ def wav_loudest_frame_dbfs(audio: bytes) -> float | None:
     rms = np.sqrt(np.mean((frames / 32768.0) ** 2, axis=1))
     peak = float(rms.max())
     return 20 * math.log10(peak) if peak > 0 else float("-inf")
-
-
-def language_name(locale: str) -> str:
-    base = locale.split("-")[0].lower()
-    return {"ja": "Japanese", "en": "English"}.get(base, locale)

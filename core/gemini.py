@@ -111,8 +111,8 @@ def error_kind(exc: Exception) -> Literal["transient", "missing", "credits", "ot
     return "other"
 
 
-def thinking_config(types_module):
-    level = os.environ.get("GEMINI_THINKING_LEVEL", "low").strip().lower()
+def thinking_config(types_module, level: str | None = None):
+    level = (level or os.environ.get("GEMINI_THINKING_LEVEL", "low")).strip().lower()
     if level in {"", "off", "none"}:
         level = "minimal"
     try:

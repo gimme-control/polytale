@@ -492,3 +492,99 @@ def remove_hairlines(img: Image.Image, *, width: int = 1, max_alpha: int = 220) 
     thin = visible & ~opened & (alpha < max_alpha)
     arr[..., 3] = np.where(thin, 0, alpha)
     return Image.fromarray(arr, mode="RGBA")
+
+
+def soft_key_cutout(image: Image.Image, *, lo: float = 0.15, hi: float = 0.90) -> Image.Image:
+    """Difference keyer for props shot on a SATURATED green or blue screen.
+
+    The edge flood is binary, so glass, liquid and condensation come out as an
+    opaque blob of backdrop. A difference keyer instead reads how much of the
+    key still shows through each pixel::
+
+        spill = C[key_channel] - max(other channels)
+        alpha = 1 - spill / spill_of_backdrop        (then levelled by lo/hi)
+
+    Glass becomes genuinely semi-transparent, and a contact shadow painted on
+    the screen (a darker key) resolves to translucent black for free. Colour is
+    un-premultiplied from the key and the key channel is then clamped to the
+    other two (spill suppression), so subjects must not contain the key hue:
+    shoot green things on blue and blue things on green.
+
+    Returns RGBA at the input size (no trim). Raises ValueError when the
+    backdrop is not a saturated green/blue field.
+    """
+    rgb = np.asarray(image.convert("RGB")).astype(np.float32)
+    key = np.array(sample_backdrop_rgb(rgb), dtype=np.float32)
+    k = int(np.argmax(key))
+    others = [c for c in range(3) if c != k]
+    spill_bg = float(key[k] - max(key[others[0]], key[others[1]]))
+    if k == 0 or spill_bg < 90.0:
+        raise ValueError(f"backdrop {tuple(int(v) for v in key)} is not a green/blue screen")
+    spill = rgb[..., k] - np.maximum(rgb[..., others[0]], rgb[..., others[1]])
+    raw = 1.0 - np.clip(spill / spill_bg, 0.0, 1.0)
+    alpha = np.clip((raw - lo) / max(hi - lo, 1e-3), 0.0, 1.0)
+    # Un-premultiply with the RAW coverage: it is the physically consistent one.
+    # Using the levelled alpha over-subtracts the key and turns glass magenta.
+    r3 = raw[..., None]
+    fg = np.clip((rgb - key * (1.0 - r3)) / np.maximum(r3, 0.05), 0.0, 255.0)
+    a3 = alpha[..., None]
+    fg[..., k] = np.minimum(fg[..., k], np.maximum(fg[..., others[0]], fg[..., others[1]]))
+    fg = np.where(a3 > 0.01, fg, 0.0)
+    out = np.dstack([fg, alpha * 255.0]).round().astype(np.uint8)
+    return Image.fromarray(out, mode="RGBA")
+
+
+def drop_faint_islands(img: Image.Image, *, solid: int = 200, floor: int = 8) -> Image.Image:
+    """Remove translucent haze that is not attached to a solid part of the subject.
+
+    A difference keyer turns uneven screen lighting (a paler band, a vignette)
+    into faint alpha. Real translucency — steam, glass, a contact shadow — always
+    touches the solid object, so visible pixels are kept only when they connect
+    to a core of alpha >= ``solid``. Runs on a bounded downsampled mask.
+    """
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    alpha = arr[..., 3]
+    visible = alpha > floor
+    core = alpha >= solid
+    if not core.any():
+        return rgba
+    small_vis = _shrink_mask(visible)
+    if small_vis is None:
+        vis, seeds = visible, core
+    else:
+        vis = small_vis
+        seeds = _shrink_mask(_dilate(core, times=2))
+        assert seeds is not None
+        seeds = seeds & vis
+    reached = seeds
+    while True:
+        grown = _dilate(reached, times=1) & vis
+        if np.array_equal(grown, reached):
+            break
+        reached = grown
+    keep = reached if small_vis is None else _grow_mask(_dilate(reached, times=1), visible.shape)
+    arr[..., 3] = np.where(keep, alpha, 0)
+    return Image.fromarray(arr, mode="RGBA")
+
+
+def solidify(cut: Image.Image, source: Image.Image, *, rim: int = 3) -> Image.Image:
+    """Make the interior of an OPAQUE prop fully solid, with its original colours.
+
+    A keyer reads any key-hued pixel as see-through, so a printed photo with green
+    or teal lights in it would come out with holes and desaturated greens. For props
+    known to be opaque (a photo, a card), everything enclosed by the keyed silhouette
+    is restored from ``source`` at full alpha; only a ``rim``-pixel edge and whatever
+    lies outside the silhouette (the contact shadow) keep the keyer's result.
+    ``cut`` and ``source`` must be the same size.
+    """
+    if cut.size != source.size:
+        raise ValueError("cut and source must be the same size")
+    arr = np.array(cut.convert("RGBA"))
+    src = np.asarray(source.convert("RGB"))
+    # High threshold: a translucent contact shadow must not count as the prop body.
+    body = _fill_holes(_largest_cc(arr[..., 3] >= 215))
+    core = _erode(body, times=rim)
+    arr[..., :3] = np.where(core[..., None], src, arr[..., :3])
+    arr[..., 3] = np.where(core, 255, arr[..., 3])
+    return Image.fromarray(arr, mode="RGBA")

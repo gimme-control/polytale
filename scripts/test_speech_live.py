@@ -3,8 +3,8 @@
 Run: cd polytale && PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/test_speech_live.py
 
 Gemini path always runs (needs GEMINI_API_KEY). ElevenLabs is skipped cleanly without
-ELEVENLABS_API_KEY. Fixtures (16 kHz mono 16-bit PCM WAV, 0.3 s leading silence) land in
-scripts/fixtures/learner_audio/ for playtests to use as fake microphone input.
+ELEVENLABS_API_KEY. Fixtures (16 kHz mono 16-bit PCM WAV, 0.3 s lead/tail silence) land in
+scripts/fixtures/learner_audio/<locale>/ for playtests to use as fake microphone input.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import time
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -28,7 +29,9 @@ from media.stt import (  # noqa: E402
     DEFAULT_ELEVENLABS_STT_MODEL,
     ElevenLabsSTT,
     GeminiSTT,
+    LanguageHint,
     STTService,
+    TranscriptionResult,
     build_stt_service,
     needs_confirmation,
 )
@@ -40,30 +43,32 @@ from media.tts import (  # noqa: E402
     TTSService,
 )
 
-FIXTURES = ROOT / "scripts" / "fixtures" / "learner_audio"
+# The live run exercises one language profile; media/ itself knows none.
+TARGET = LanguageHint("zh-CN", "Mandarin Chinese", "pinyin")
+SUPPORT_LOCALE = "en-US"
+FIXTURES = ROOT / "scripts" / "fixtures" / "learner_audio" / TARGET.locale
 FIXTURE_RATE = 16000
 LEAD_SILENCE_S = 0.3
 TAIL_SILENCE_S = 0.3
-FIXTURE_ATTEMPTS = 3
-NPC_VOICE = {"elevenlabs_voice_id": "", "gemini_voice": "Kore", "style": "warm, clear, unhurried"}
+FIXTURE_ATTEMPTS = 5
+NPC_VOICE = {"elevenlabs_voice_id": "", "gemini_voice": "Charon",
+             "style": "a man in his forties tending a bar; relaxed, low, unhurried; brisk tonight"}
 LEARNER_VOICE = {"gemini_voice": "Puck",
-                 "style": "a friendly adult learner speaking carefully, plain and clear"}
-# (line, tokens that must come back through STT: proves verbatim reading, no instructions read)
-NPC_LINES: list[tuple[str, list[tuple[str, ...]]]] = [
-    ("鍵。", [("kagi", "鍵", "かぎ")]),
-    ("はい、鍵をください、ですね。どうぞ。", [("kagi", "鍵"), ("kudasai", "ください"),
-                                          ("douzo", "dōzo", "どうぞ")]),
-]
-# (fixture name, text to speak, TTS language, groups: each group needs one hit in transcript|romaji)
-LEARNER_UTTERANCES: list[tuple[str, str, str, list[tuple[str, ...]]]] = [
-    ("kagi_o_kudasai", "鍵をください。", "ja-JP", [("kagi", "鍵", "かぎ"), ("kudasai", "ください")]),
-    ("key_kudasai", "Key... ください。", "ja-JP", [("key", "キー"), ("kudasai", "ください")]),
-    ("chizu_o_kudasai", "地図をください。", "ja-JP", [("chizu", "地図", "ちず"),
-                                                 ("kudasai", "ください")]),
-    ("kagi", "鍵。", "ja-JP", [("kagi", "鍵", "かぎ")]),
-    # English-voiced "Chizu, please." is often heard as チーズ (cheese): keep chizu Japanese.
-    ("chizu_please", "地図... please.", "ja-JP", [("chizu", "地図", "ちず")]),
-    ("can_i_have_the_map", "Can I have the map?", "en-US", [("map",)]),
+                 "style": "an adult learner speaking carefully, plain and clear"}
+# (line, exact text STT must hear back: proves verbatim reading, no instructions read aloud)
+NPC_LINES = ["你要什么？", "好的，一瓶啤酒。十块钱。"]
+# (fixture name, text to speak, TTS language, exact transcript, romanized letters or None)
+# Transcript/romanized are compared with punctuation, spacing, case and tone marks removed.
+LEARNER_UTTERANCES: list[tuple[str, str, str, str, str | None]] = [
+    ("pijiu", "啤酒。", "zh-CN", "啤酒", "pijiu"),
+    ("wo_yao_pijiu", "我要啤酒。", "zh-CN", "我要啤酒", "woyaopijiu"),
+    ("zhege", "这个。", "zh-CN", "这个", "zhege"),
+    ("duoshao_qian", "多少钱？", "zh-CN", "多少钱", "duoshaoqian"),
+    ("xiexie", "谢谢。", "zh-CN", "谢谢", "xiexie"),
+    ("wo_yao_mian", "我要面。", "zh-CN", "我要面", "woyaomian"),
+    ("a_beer_please_en", "Can I get a beer please?", "en-US", "canigetabeerplease", None),
+    # Spoken with an English voice locale so "beer" stays English instead of a loanword.
+    ("mixed_beer_xiexie", "Beer, 谢谢。", "en-US", "beer谢谢", "beerxiexie"),
 ]
 
 FAILURES: list[str] = []
@@ -128,9 +133,16 @@ def silence_wav(seconds: float = 1.5) -> bytes:
     return buffer.getvalue()
 
 
-def hits(groups: list[tuple[str, ...]], transcript: str, romanized: str | None) -> bool:
-    haystack = f"{transcript} {romanized or ''}".lower()
-    return all(any(token in haystack for token in group) for group in groups)
+def squash(text: str | None) -> str:
+    """Lower-case letters/digits only, tone marks and other diacritics removed."""
+    decomposed = unicodedata.normalize("NFD", text or "")
+    return "".join(c for c in decomposed if c.isalnum() and not unicodedata.combining(c)).lower()
+
+
+def heard_as(result: TranscriptionResult, transcript: str, romanized: str | None) -> bool:
+    if squash(result.transcript) != squash(transcript):
+        return False
+    return romanized is None or squash(result.romanized) == romanized
 
 
 def timed_tts(service: TTSService, text: str, language: str, voice: dict) -> tuple[bytes, float]:
@@ -144,9 +156,9 @@ def run_gemini_tts(cache: Path, stt: STTService) -> None:
     print(f"\n== Gemini TTS ({os.environ.get('GEMINI_TTS_MODEL') or DEFAULT_GEMINI_TTS_MODEL})")
     model = os.environ.get("GEMINI_TTS_MODEL") or DEFAULT_GEMINI_TTS_MODEL
     service = TTSService([GeminiTTS(model=model)], cache_dir=cache)
-    for text, groups in NPC_LINES:
+    for text in NPC_LINES:
         try:
-            audio, elapsed = timed_tts(service, text, "ja-JP", NPC_VOICE)
+            audio, elapsed = timed_tts(service, text, TARGET.locale, NPC_VOICE)
         except SpeechError as exc:
             check(f"gemini tts {text}", False, str(exc))
             continue
@@ -157,13 +169,13 @@ def run_gemini_tts(cache: Path, stt: STTService) -> None:
               rate == 24000 and low <= duration <= high)
         print(f"   latency {elapsed:.2f}s (uncached, full clip = first audio)")
         start = time.perf_counter()
-        clip = service.synthesize(text, language="ja-JP", voice=NPC_VOICE)
+        clip = service.synthesize(text, language=TARGET.locale, voice=NPC_VOICE)
         check(f"gemini tts {text} cached replay", clip.cached,
               f"{(time.perf_counter() - start) * 1000:.1f} ms")
         print(f"   cached lookup {(time.perf_counter() - start) * 1000:.1f} ms")
-        heard = stt.transcribe(audio, "audio/wav", target_locale="ja-JP", support_locale="en-US")
+        heard = stt.transcribe(audio, "audio/wav", target=TARGET, support_locale=SUPPORT_LOCALE)
         check(f"gemini tts {text} read verbatim (STT heard {heard.transcript!r})",
-              hits(groups, heard.transcript, heard.romanized))
+              squash(heard.transcript) == squash(text))
 
 
 def make_fixtures(stt: STTService) -> dict[str, bytes]:
@@ -173,7 +185,7 @@ def make_fixtures(stt: STTService) -> dict[str, bytes]:
     FIXTURES.mkdir(parents=True, exist_ok=True)
     tts = GeminiTTS()
     out: dict[str, bytes] = {}
-    for name, text, language, groups in LEARNER_UTTERANCES:
+    for name, text, language, transcript, romanized in LEARNER_UTTERANCES:
         for attempt in range(1, FIXTURE_ATTEMPTS + 1):
             start = time.perf_counter()
             try:
@@ -185,17 +197,15 @@ def make_fixtures(stt: STTService) -> dict[str, bytes]:
             elapsed = time.perf_counter() - start
             samples, rate = read_wav(audio)
             data = fixture_wav(samples, rate)
-            heard = stt.transcribe(data, "audio/wav", target_locale="ja-JP",
-                                   support_locale="en-US")
+            heard = stt.transcribe(data, "audio/wav", target=TARGET,
+                                   support_locale=SUPPORT_LOCALE)
             print(f"   {name}.wav attempt {attempt}: {len(samples) / rate:.2f}s speech, "
                   f"tts {elapsed:.2f}s, heard {heard.transcript!r}")
-            out[name] = data
-            if hits(groups, heard.transcript, heard.romanized):
+            if heard_as(heard, transcript, romanized):
+                out[name] = data
+                (FIXTURES / f"{name}.wav").write_bytes(data)
                 break
-        if name in out:
-            (FIXTURES / f"{name}.wav").write_bytes(out[name])
-        else:
-            check(f"fixture {name}", False, "no audio")
+        check(f"fixture {name}.wav round-trips through STT as {transcript!r}", name in out)
     out["silence"] = silence_wav()
     (FIXTURES / "silence.wav").write_bytes(out["silence"])
     for name, data in out.items():
@@ -207,16 +217,18 @@ def make_fixtures(stt: STTService) -> dict[str, bytes]:
     return out
 
 
-def round_trip(label: str, service: STTService, fixtures: dict[str, bytes]) -> None:
+def round_trip(label: str, service: STTService, fixtures: dict[str, bytes], *,
+               romanizes: bool = True) -> None:
+    """`romanizes` is False for providers that return no romanization (ElevenLabs)."""
     print(f"\n== STT round trip: {label}")
     latencies: list[float] = []
-    for name, _text, _language, groups in LEARNER_UTTERANCES:
+    for name, _text, _language, transcript, romanized in LEARNER_UTTERANCES:
         if name not in fixtures:
             continue
         start = time.perf_counter()
         try:
-            result = service.transcribe(fixtures[name], "audio/wav", target_locale="ja-JP",
-                                        support_locale="en-US")
+            result = service.transcribe(fixtures[name], "audio/wav", target=TARGET,
+                                        support_locale=SUPPORT_LOCALE)
         except SpeechError as exc:
             check(f"{label} stt {name}", False, str(exc))
             continue
@@ -225,12 +237,12 @@ def round_trip(label: str, service: STTService, fixtures: dict[str, bytes]) -> N
         print(f"   {name}: transcript={result.transcript!r} romanized={result.romanized!r} "
               f"langs={result.detected_languages} conf={result.confidence} "
               f"confirm={needs_confirmation(result)} {elapsed:.2f}s")
-        check(f"{label} stt {name} contains {groups}",
-              hits(groups, result.transcript, result.romanized))
+        check(f"{label} stt {name} == {transcript!r} / {romanized!r}",
+              heard_as(result, transcript, romanized if romanizes else None))
     start = time.perf_counter()
     try:
-        silent = service.transcribe(fixtures["silence"], "audio/wav", target_locale="ja-JP",
-                                    support_locale="en-US")
+        silent = service.transcribe(fixtures["silence"], "audio/wav", target=TARGET,
+                                    support_locale=SUPPORT_LOCALE)
         print(f"   silence: {silent} {time.perf_counter() - start:.2f}s")
         # Gated before the provider: Gemini hallucinates confident phrases on pure silence.
         check(f"{label} stt silence -> empty (silence gate)", silent.transcript == ""
@@ -250,9 +262,9 @@ def run_elevenlabs(cache: Path, fixtures: dict[str, bytes]) -> None:
     model = os.environ.get("ELEVENLABS_TTS_MODEL") or DEFAULT_ELEVENLABS_TTS_MODEL
     print(f"\n== ElevenLabs TTS ({model})")
     service = TTSService([ElevenLabsTTS(key, model=model)], cache_dir=cache)
-    for text, _groups in NPC_LINES:
+    for text in NPC_LINES:
         try:
-            audio, elapsed = timed_tts(service, text, "ja-JP", NPC_VOICE)
+            audio, elapsed = timed_tts(service, text, TARGET.locale, NPC_VOICE)
         except SpeechError as exc:
             check(f"elevenlabs tts {text}", False, str(exc))
             continue
@@ -261,7 +273,7 @@ def run_elevenlabs(cache: Path, fixtures: dict[str, bytes]) -> None:
         print(f"   latency {elapsed:.2f}s")
     stt_model = os.environ.get("ELEVENLABS_STT_MODEL") or DEFAULT_ELEVENLABS_STT_MODEL
     round_trip(f"elevenlabs {stt_model}", STTService([ElevenLabsSTT(key, model=stt_model)]),
-               fixtures)
+               fixtures, romanizes=False)
 
 
 def main() -> int:

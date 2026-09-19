@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useGame } from "./store";
 import { StartScreen } from "./components/StartScreen";
+import { IntroCard } from "./components/IntroCard";
 import { PlayView } from "./components/PlayView";
-import { Wordmark } from "./components/Hud";
+import { Summary } from "./components/Summary";
 
 export default function App() {
   const screen = useGame((s) => s.screen);
@@ -11,14 +12,12 @@ export default function App() {
     void boot();
   }, [boot]);
 
-  if (screen === "boot") {
-    return (
-      <div className="flex h-full items-center justify-center bg-ink" data-testid="boot">
-        <div className="fade-in opacity-70">
-          <Wordmark />
-        </div>
-      </div>
-    );
-  }
-  return screen === "start" ? <StartScreen /> : <PlayView />;
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-night" data-screen={screen}>
+      {screen === "start" && <StartScreen />}
+      {screen === "intro" && <IntroCard />}
+      {screen === "play" && <PlayView />}
+      {screen === "summary" && <Summary />}
+    </div>
+  );
 }

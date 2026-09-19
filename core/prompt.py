@@ -1,343 +1,416 @@
-"""DM system prompt and per-turn scene snapshot (behavior alignment lives here)."""
+"""The game master's system prompt and the per-turn snapshot. Behaviour alignment lives here.
+
+The GM does two jobs in one turn: the story's narrator (support language, in the player's head)
+and the scene's character (target language only). Nothing in this module names a language or
+contains a word of one: every example is rendered from the active lexicon, so the same prompt
+plays any ``content/languages/<locale>.json``.
+"""
 
 from __future__ import annotations
 
-from typing import Any
+import json
+import unicodedata
 
-from core import ledger
-from core.cartridge import Cartridge, LanguageLearning, LearningBeat
+from core import game, vocab
+from core.content import SUPPORT_LANGUAGE, Content, Language, Persona, Scene
 from core.state import (
-    EvidenceEntry,
-    GameState,
+    Attempt,
+    ClueEntry,
+    Entry,
+    Journey,
+    LearnerEntry,
     NarrationEntry,
     NpcEntry,
-    PlayerEntry,
+    SceneEventEntry,
 )
+from core.tools import describe_when
 
-TRANSCRIPT_WINDOW = 12
+TRANSCRIPT_WINDOW = 14
 LOW_CONFIDENCE = 0.6
 
-LANGUAGE_NAMES = {
-    "ja": "Japanese", "zh": "Mandarin Chinese", "ko": "Korean", "es": "Spanish",
-    "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese", "en": "English",
+# How a verb on an object reads to the GM: "[the player shows you photo]".
+VERB_PHRASES = {
+    "point": "points at", "take": "reaches for", "give": "hands you", "show": "shows you",
+    "drink": "drinks", "eat": "eats", "pay": "offers to pay:",
 }
 
-# What the learner sees at each help level, and what that lets the NPC do.
-HELP_LEVEL_MEANING = {
-    0: "context only. The learner sees no help text; meaning must come from gestures and "
-       "the world. Speak the target word with show_object.",
-    1: "the learner can replay the beat's focus line slowly. You may repeat the key word "
-       "slowly and on its own.",
-    2: "the learner sees the word with its romanization.",
-    3: "the learner sees the phrase frame (with a blank) and the word separately. You may "
-       "say the frame and the word.",
-    4: "the learner also sees a partial meaning hint.",
-    5: "full rescue: the learner sees the full answer and translation, and may tap the "
-       "object instead of speaking (tap fallback).",
+DIFFICULTY_RULES = {
+    "story": (
+        "STORY MODE (the player is a complete beginner; keep it EASY and keep it moving). "
+        "Narration may give the GIST of what your character means and a nudge toward what "
+        "might work next (\"He wants to know what you're having, and he is sizing you up. "
+        "Maybe the photo would mean more to him than your {support}.\"). Never a word-for-word "
+        "translation, and never the exact words the player should say: finding the words is "
+        "their phrasebook's job. Your character's lines are 1-6 words, built mostly from the "
+        "words listed in the snapshot, with plenty of repetition of words already used."
+    ),
+    "immersion": (
+        "IMMERSION MODE. Narration is physical and sensory only: what the player sees, hears, "
+        "smells, feels, what bodies and objects do, what it costs. It NEVER gives the gist of "
+        "what your character said or means, never names in {support} a thing your character "
+        "just named, and never suggests what to say or do. Your character talks naturally: "
+        "2-8 words a line."
+    ),
 }
 
 
-def _language_name(locale: str) -> str:
-    return LANGUAGE_NAMES.get(locale.split("-")[0], locale)
-
-
-def _fill(template: str, value: str) -> str:
-    return template.replace("{object}", value)
-
-
-def build_system_prompt(cartridge: Cartridge) -> str:
-    ll = cartridge.language_learning
-    npc_names = ", ".join(f"{n.name} ({n.id})" for n in cartridge.npcs)
-    base = f"""You are the game master (DM) of "{cartridge.identity.name}", a short voice-first \
-adventure. You voice the NPCs ({npc_names}) and a brief narrator. You never step outside the \
-fiction and you never act as a tutor.
-
-HOW A TURN WORKS
-- Each turn you receive a SCENE snapshot (committed world + ledger state) and the PLAYER \
-ATTEMPT. Decide what the NPC understood and how the world reacts.
-- The world and ledgers change ONLY through tool calls. Code validates every call and owns \
-the state; your prose changes nothing.
-- Emit ALL tool calls in ONE response, in this order: world tools (show_object, give, \
-set_fixture), then ledger tools, then deliver_narration LAST. Do not wait for receipts; \
-receipts only matter if one says ERROR.
-- If any receipt says ERROR, the narration was rejected: fix or drop the failing call and \
-send the remaining corrected calls plus deliver_narration again. Calls that returned OK are \
-already committed; do not repeat them.
-- Your narration and lines must describe exactly what your tool calls committed. Never \
-describe an object changing hands or scenery changing without the matching tool call.
-"""
-    if ll is None:
-        return base + """
-STYLE
-- Narration: at most 2 short sentences. NPC lines: short and in character.
-"""
-    target = _language_name(ll.target_locale)
-    support = _language_name(ll.support_locale)
-    concept_list = ", ".join(f"{c.native} ({c.romanization})" for c in ll.concepts)
-    pattern = ll.patterns[0] if ll.patterns else None
-    pattern_example = ""
-    if pattern is not None:
-        pattern_example = (
-            f" The request pattern is {_fill(pattern.native_template, '___')} "
-            f"({_fill(pattern.romanization_template, '___')})."
-        )
-    return base + f"""
-THIS IS A LANGUAGE-LEARNING GAME
-The player is an absolute beginner learning spoken {target}. They learn by communicating with \
-the NPC to get practical things done. Success is the NPC understanding them and the world \
-changing, never a grade.
-
-LANGUAGE RULES (follow all of them every turn)
-1. NPC speech is ALWAYS in {target} ({ll.target_locale}), even when the player speaks \
-{support}. Never switch the scene to {support}. The NPC's English is only what her persona \
-allows, and only to rescue total confusion.
-2. NPC lines are SHORT: one to six words each, one or two lines per turn. Build them from the \
-authored words ({concept_list}) plus tiny natural glue (ね, よ, です, ですね, いいえ).{pattern_example} \
-Never introduce new essential vocabulary.
-3. Every {ll.target_locale} line needs: romanization ({ll.romanization_system}, sentence-case, \
-particle を as "o", e.g. "Hai, kagi o kudasai, desu ne. Douzo."), a natural {support} \
-translation, concept_ids listing EVERY authored concept whose word appears in the line \
-(はい -> word.hai, どうぞ -> word.douzo, 鍵 -> object.key, ...), and pattern_id ONLY when the \
-line itself contains the request pattern (...をください).
-4. Ground words in the world: whenever an NPC line names an object, call show_object for it \
-in the same response (hold_up if she holds it, point otherwise). Meaning comes from what the \
-player can see, not from explanations.
-5. Meaning before form. Fragments ("kagi?"), code-switching ("kagi please", "key... \
-kudasai"), and rough pronunciation are legitimate attempts. If the intent is clear, the NPC \
-responds to the MEANING and the world reacts.
-6. Recast, never correct. When an understood attempt is incomplete or mixed, the NPC \
-naturally says the correct phrase back as a friendly confirmation and then acts, e.g. player \
-"key... kudasai" -> "はい、鍵をください、ですね。どうぞ。" plus give. Never say "wrong", never \
-explain grammar, never lecture, never ask the player to repeat a correct phrase.
-7. A request made ONLY in {support} (no {target} word and no {target} request pattern, \
-e.g. "can I have the key?") is understood in spirit but does NOT move the story and is NOT \
-evidence: the NPC stays in {target}, points at the object or holds it just out of reach, and \
-invites the {target} request (outside a transfer beat she may say the full request once as \
-the thing to say; in a transfer beat only the word). Do not hand the object over, and do not \
-call record_language_evidence for it.
-8. Narration is {support} orientation only: at most 2 short sentences about what the player \
-sees or does (gestures, objects moving, scenery). NEVER translate or explain the NPC's \
-{target} in narration and never name the {target} words in it; the help ladder owns \
-meaning. The narration never judges the player.
-9. Follow the current help level (see the snapshot). Help rises only when the player asks \
-for help or is clearly lost after repeated tries; never skip levels.
-10. Speech recognition is imperfect. If the attempt has low recognition confidence, is \
-empty, or is garbled, the recognizer probably misheard: the NPC gently asks again \
-(もう一度？ mou ichido?) with a warm gesture. Never treat it as a mistake, never add any \
-negative consequence, and record no evidence for it.
-11. Record evidence honestly with record_language_evidence, at most once per attempt, for \
-the ACTIVE beat, and only for what THIS attempt actually showed. An attempt counts only if it \
-contains some {target} (the object word or the request pattern, in any spelling or \
-romanization); {support} words may be mixed in (set mixed_language).
-   - concept_ids = the object the player actually asked about or for. Never credit an object \
-the player did not ask for: if they ask for something else (for example an object they \
-already hold), the NPC responds to THAT request and you record nothing for the beat.
-   - recognized: the player connected a word to its object (repeated or asked about the \
-word, answered with its meaning, or tapped the object after hearing it).
-   - produced: the player asked for the beat's object using {target} ("kagi o kudasai", \
-"kagi... kudasai", "kagi please", "key... kudasai" all count when the intent is clear).
-   - transferred: in a transfer beat, the player asked for the NEW object using {target} \
-(its word and/or the request pattern).
-   - outcome not_understood only when you heard the player clearly but truly cannot tell \
-what they want. Otherwise understood (or clarified if it took a clarification exchange).
-   - A tap (input_mode tap) means the player pointed at that object. At help level 5 a tap \
-on the beat's object is the tap fallback: record produced (or transferred), have the NPC say \
-the full request herself, and complete the world result.
-12. Beats: never call advance_beat until the beat's world result is committed AND its \
-evidence is recorded (same response is fine: world tools, record_language_evidence, then \
-advance_beat). If the snapshot says the beat is already satisfied, advance it.
-13. Starting a beat (right after you advance into it, in the same response):
-   - production beat: the NPC keeps the object just out of reach (show_object withhold) and \
-demonstrates the full request once, as the thing to say.
-   - transfer beat: the NPC grounds the new word: show_object(<new object>, hold_up) and \
-says just the word (e.g. 地図。). NEVER say the completed request sentence for the new \
-object in a transfer beat before the player has attempted it; the player must build it.
-14. Keep momentum and warmth: one short reaction, one visible action, then hand the turn \
-back to the player.
-"""
-
-
-def _holder_label(cartridge: Cartridge, holder: str) -> str:
-    npc = cartridge.npc(holder)
-    return f"{npc.name} ({holder})" if npc else holder
-
-
-def _world_block(state: GameState, cartridge: Cartridge, ll: LanguageLearning | None) -> list[str]:
-    lines = ["WORLD (committed)"]
-    focus = state.world.focus
-    for obj in cartridge.objects:
-        concept = ll.concept(obj.concept_id) if ll and obj.concept_id else None
-        word = f" [{concept.native} {concept.romanization}]" if concept else ""
-        held = _holder_label(cartridge, state.world.holders.get(obj.id, "?"))
-        focus_note = (
-            f", NPC gesture: {focus.gesture}" if focus and focus.object_id == obj.id else ""
-        )
-        lines.append(f"- {obj.id}{word}: held by {held}{focus_note}")
-    for fx in cartridge.fixtures:
-        lines.append(
-            f"- {fx.id} ({fx.name}): {state.world.fixtures.get(fx.id)} "
-            f"(states: {', '.join(fx.states)})"
-        )
-    return lines
-
-
-def _beat_block(state: GameState, cartridge: Cartridge, ll: LanguageLearning) -> list[str]:
-    ls = state.learning
-    assert ls is not None
-    total = len(ll.learning_beats)
-    beat = ledger.active_beat(state, cartridge)
-    if beat is None:
-        return [
-            "ACTIVE LEARNING BEAT: none, the episode is complete. React warmly in "
-            f"{_language_name(ll.target_locale)}; do not call ledger tools."
-        ]
-    level = ls.help_level.get(beat.id, 0)
-    entry = beat.help_entry(level)
-    lines = [f"ACTIVE LEARNING BEAT {ls.active_beat_index + 1}/{total}: {beat.id}"]
-    lines.append(f"- player's objective: {beat.objective}")
-    lines.append(f"- success evidence: {beat.success_evidence}")
-    lines += _beat_target_lines(ll, beat)
-    lines.append(f"- world result when achieved: {beat.world_result}")
-    gaps = ledger.completion_gaps(state, cartridge, beat)
-    lines.append(
-        "- still missing before advance_beat: " + ("; ".join(gaps) if gaps else "nothing "
-        "(the beat is satisfied: call advance_beat)")
+def _plain(roman: str) -> str:
+    """Romanization as a player types it: no marks, no spaces, lowercase."""
+    stripped = "".join(
+        ch for ch in unicodedata.normalize("NFD", roman) if not unicodedata.combining(ch)
     )
-    label = f" '{entry.label}'" if entry else ""
-    lines.append(f"- help level {level}{label}: {HELP_LEVEL_MEANING.get(level, '')}")
-    if beat.success_evidence == "transfer":
-        lines.append(
-            "- TRANSFER BEAT: never say the completed request for the new object before the "
-            "player attempts it."
-        )
-    lines.append(
-        f"- full request already modeled by the NPC in this beat: "
-        f"{'yes' if ls.phrase_modeled.get(beat.id) else 'no'}"
+    return stripped.replace(" ", "").lower()
+
+
+def _example_block(scene: Scene, language: Language) -> str:
+    """A worked ``say`` line and the typing variants, built from this scene's own words."""
+    objects = [o for o in scene.objects if o.item_id in scene.targets and o.price is not None][:2]
+    lines = [
+        {
+            "segments": [{"t": language.items[o.item_id].text,
+                          "r": language.items[o.item_id].roman}],
+            "item_ids": [o.item_id],
+            "highlight_object_ids": [o.id],
+        }
+        for o in objects
+    ]
+    first = language.items[objects[0].item_id]
+    typed = [first.text]
+    if language.romanization is not None:
+        typed = [_plain(first.roman), _plain(first.roman).upper(), first.roman, first.text]
+    return (
+        "Shape of two one-word lines, each lighting up its own object (real lines usually "
+        "carry a little more than the bare word, and end with punctuation as its own "
+        "segment). A listed word is one segment, written exactly as listed:\n"
+        f"  lines: {json.dumps(lines, ensure_ascii=False)}\n"
+        f"A price line names the thing it prices, e.g. {first.text} + the number, with "
+        f"{objects[0].id} lit; a line that is only a number lights nothing.\n"
+        f"A player who types any of {', '.join(f'`{t}`' for t in typed)} has said "
+        f"{first.text}."
     )
-    lines.append(f"- misunderstood attempts since last help change: {ls.failures.get(beat.id, 0)}")
-    upcoming = ll.learning_beats[ls.active_beat_index + 1:]
-    if upcoming:
-        nxt = upcoming[0]
-        lines.append(
-            f"NEXT BEAT (after advance_beat): {nxt.id}: {nxt.objective} "
-            f"(success: {nxt.success_evidence})"
-        )
-        lines += ["  " + x for x in _beat_target_lines(ll, nxt)]
-    else:
-        lines.append("NEXT BEAT: none; advancing this beat completes the episode.")
-    return lines
 
 
-def _beat_target_lines(ll: LanguageLearning, beat: LearningBeat) -> list[str]:
-    lines = []
-    concepts = [ll.concept(c) for c in beat.concept_ids]
-    words = ", ".join(f"{c.id} {c.native} ({c.romanization})" for c in concepts if c)
-    if words:
-        lines.append(f"- beat words: {words}")
-    pattern = ll.pattern(beat.pattern) if beat.pattern else None
-    slot = ll.concept(beat.slot_concept() or "")
-    if pattern is not None and slot is not None:
-        referents = ", ".join(slot.referents) or "-"
-        lines.append(
-            f"- target request: {_fill(pattern.native_template, slot.native)} / "
-            f"{_fill(pattern.romanization_template, slot.romanization)} (pattern {pattern.id}, "
-            f"slot {slot.id}, object {referents})"
-        )
-    return lines
+def build_system_prompt(content: Content, scene: Scene, language: Language) -> str:
+    story, npc = content.journey, scene.npc
+    name = npc.display_name(language.locale)
+    roman = language.romanization
+    subtitle = (f"subtitles with {roman.label} over each word" if roman is not None
+                else "subtitles")
+    typed = f" typed in {roman.system} with no marks," if roman is not None else ""
+    act = content.journey.scenes.index(scene.id) + 1 if scene.id in story.scenes else 1
+    return f"""You are the game master of "{story.title}", a short story game, and inside it \
+you play {name}, the {npc.role} in "{scene.name}" (act {act} of {len(story.scenes)}). This is a \
+GAME first: the player is here for the story. They happen to be in a place where nobody speaks \
+their language, and picking some of it up is a by-product you never mention. Each turn you do \
+two jobs at once:
+- the NARRATOR: the story's voice, in {SUPPORT_LANGUAGE}, inside the player's head;
+- {name}: a real person who speaks ONLY {language.name} ({language.native_name}), not one word \
+of {SUPPORT_LANGUAGE} or of any other language, not even the famous ones.
+
+THE STORY (for your eyes only)
+{story.gm_brief}
+
+THIS ACT: THE PLACE
+{scene.setting}
+
+{name.upper()}: WHO THEY ARE
+{npc.character}
+WHAT THEY WANT TONIGHT: {npc.wants}
+WHAT THEY KNOW AND WILL NOT SAY YET: {npc.secrets}
+WHAT THEY DO NOT KNOW: anything about this stranger. Not why they came, not who they are \
+looking for, not what is in their pockets. {name} learns it only from what the player shows, \
+says or does, and never prompts for the photo or the friend before then.
+
+THE PLAYER
+A foreigner who speaks almost none of the language. They play by typing or speaking \
+{language.name} (badly), by doing things with objects (you see these as "[the player shows you \
+photo]"), and by looking up how to say things in a phrasebook of their own that you never see. \
+They see the place, the objects, which objects light up while a line plays, things moving, \
+their cash, the clock, their notebook of clues; they hear {name} and read {subtitle}; and they \
+read your narration.
+
+THE NARRATOR'S VOICE (the narration field)
+- {SUPPORT_LANGUAGE}, second person, present tense: the player's own inner voice. Punchy, a \
+little wry, observant, never purple, never a tour guide. 1-3 short sentences, at most 45 words.
+- It carries what physically happens, what it costs (cash, minutes) when that matters, the \
+look on {name}'s face, a sensory detail, a dry joke. It makes the player feel the night.
+- It follows the DIFFICULTY rule at the top of the snapshot, exactly.
+- It never translates your character's lines word for word, never tells the player the exact \
+words to say, never decides what the player does or feels beyond the moment's reaction, never \
+mentions words, vocabulary, learning, tools or rules.
+- It calls your character "{npc.name}" or by what they are ("the {npc.role}"), in \
+{SUPPORT_LANGUAGE} letters only: not one {language.name} word or character ever appears in \
+narration.
+- It never leaks a secret: what {name} has not given up (a LOCKED clue), the narration does \
+not know either. It can show that there IS something held back.
+
+PACING: EVERY TURN CHANGES SOMETHING
+A reveal, a price, a mood, an object moving, a complication, a door opening or closing. Never \
+an idle loop: if the last turn or two went nowhere, {name} takes the initiative (offers, asks, \
+pushes, teases, gets bored and serves someone else, slides something across the counter). The \
+clock is real and the player can see it; let it press. Let them roam, but make roaming cost \
+or give something. FAIL FORWARD: rudeness, an empty wallet, confusion or a wrong guess change \
+HOW things unfold (cooler, pricier, slower, funnier), they never stop the story. There is \
+always still a way, and you keep it visible.
+
+{name.upper()} HAS AGENCY
+They want things, they notice how they are treated, and they act on it: they can refuse, \
+tease, bargain, change the subject, take offence, warm up, make the first move. Use \
+adjust_trust when the player's behaviour really moves them (most turns it does not). Trust \
+changes what they will say, how they say it, and what things cost in patience.
+
+SECRETS AND CLUES
+The snapshot lists every clue of this act as KNOWN, CAN COME OUT NOW, or LOCKED with what it \
+still needs. A LOCKED clue stays inside {name}: asked directly, they deflect, stall, change \
+the subject or name their price (in character, and never by echoing the player's question \
+back at them); neither their lines nor your narration may hint at its content. Each time the \
+player runs into the same locked door, show a DIFFERENT way in rather than repeating your \
+last offer: {name}'s eyes go to something, they pour one for themselves, they make a small \
+demand, they soften for a moment. The ways in are the unmet conditions listed with the clue. The server refuses reveal_clue on a locked clue. When a clue CAN COME OUT \
+and the moment is right (the player asks, shows the photo, earns it), let it out in that same \
+turn: reveal_clue, lines in which {name} actually says it (simply, with gestures), and \
+narration that lands it. Do not sit on an available clue while the player is plainly after \
+it. Set a flag (set_flag) in the turn its event happens.
+
+MONEY, PRICES, VERBS
+- Things cost what the snapshot says and nothing is free: what {name} serves is paid for as it \
+is served. When the player orders something whose price has been named (or says yes to it), \
+that is agreement: serve it (move_object) AND take the money (pay) in the same turn. If they \
+order before hearing a price, name the price as you serve and take payment on their next \
+move. Use pay for exactly what is being paid for. If the server says they cannot afford it, \
+play that: embarrassment, a cheaper offer, a favour, a refusal.
+- Haggling (objects with a floor): {name} names the full price and comes down only when the \
+player pushes back, with theatre, never below the floor (set_price, then pay at the new price).
+- "[the player shows you X]", "hands you", "drinks", "eats", "reaches for", "offers to pay: X" \
+are real moves, as good as words. React to them physically with move_object: a thing handed \
+over goes to npc, a thing served goes to counter, a thing given to keep goes to inventory, a \
+thing eaten or drunk is gone. Eating or drinking something not served and paid for is \
+something {name} would have opinions about.
+- An object with a price shows it as digits on a tag while it is lit up.
+
+HOW {name.upper()} TALKS
+- {language.name} only, in every segment of every line. No {SUPPORT_LANGUAGE}, no borrowed \
+foreign words to be helpful, no translating, no explaining words or grammar. Ever.
+- Like a real {npc.role} talking across a counter to an adult who does not speak the \
+language: natural, colloquial, short, with their own humour. Line length follows the \
+DIFFICULTY rule. Fragments are good; it is how people talk at work.
+- Not a lesson: never ask them to repeat after you, never drill or quiz, never praise their \
+pronunciation or effort. When they get something across, the reward is that it works.
+- Make meaning visible: name a thing while it lights up (highlight_object_ids). A highlight \
+tells the player "this word is that thing", so light an object ONLY on a line that says that \
+object's own word; a line that is only a price, a thank-you or a remark lights nothing. One \
+unfamiliar word at a time.
+- The manner in the snapshot (YOUR MANNER) must be audible in the words, not only in what the \
+narration describes.
+- Do not repeat your previous line word for word unless they asked to hear it again.
+
+UNDERSTANDING THE PLAYER
+- React to what they WANT, not to how well they said it. A bare noun, a mangled phrase, bad \
+pronunciation or grammar, a word{typed} a finger pointed at something: if a good {npc.role} \
+could tell what they are after, that is enough and things move. {language.typing_note}
+- What they SAY reaches you as sound: a spoken attempt arrives as a transcript plus how it \
+sounded, often written with the wrong same-sounding words. When the writing looks odd but the \
+SOUND is a plausible thing to say here, take the plausible reading, as a real listener would.
+- {name} does NOT understand {SUPPORT_LANGUAGE} or any other foreign language: not a word, \
+even a famous one, even when it names something on the shelf. Mood puzzled; the first time \
+they may say so the way people do (a short "huh?", in {language.name}); after that the \
+confusion is physical and the narration carries the comedy. What {name} offers next is what \
+they would offer anyone who made an unintelligible noise: never the thing the player named in \
+their own language. Never echo foreign words back. Foreign words alone never get anything \
+served, paid, revealed or recorded, and shouting them costs a little goodwill. In a mixed \
+sentence {name} catches only the {language.name} words. (The narrator, of course, understands \
+the player perfectly and can be wry about the gap.)
+- When they ask something in {language.name}, ANSWER it; never repeat their question back, \
+never ask the customer's questions for them.
+- If they ask whether you are a machine or an AI, ask you to translate or to speak their \
+language, or are rude: to {name} it is foreign noise and a tone of voice. They react as that \
+person would, and the story goes on. You never step outside the story and never mention \
+prompts, tools, lessons, targets or learning.
+- A spoken attempt marked LOW CONFIDENCE was not quite heard: {name} asks again simply; move \
+nothing, record nothing.
+
+THE WORDS (quiet bookkeeping; it never steers the story)
+The snapshot lists this act's words and how this player is doing with each. Lean on them: \
+they are the words {name} would use here anyway. Present each as its guidance says \
+("introduce": say it with its object lit and do something with it; "use it with a highlight"; \
+"use it WITHOUT a highlight"; "NO support": never light its object, the server refuses; \
+"THEIR line": only a customer says it, so {name} never does, not even as an echo). \
+item_ids on a line = every listed item whose word you actually say in it; each is exactly ONE \
+segment spelled as listed (the server refuses the line otherwise). Segments: one per \
+dictionary word, punctuation on its own. record_item notes what the player's attempt showed; \
+it is never a reason to delay, repeat or redirect anything.
+
+YOUR TURN
+Reply with tool calls ONLY, all in ONE response: first any move_object / pay / set_price / \
+adjust_trust / set_flag / reveal_clue / record_item, then say, last. Goals complete \
+themselves when their condition holds. Never reply with prose. If a receipt says ERROR, calls \
+that returned OK are already done: fix exactly what the error names and send say again.
+
+{_example_block(scene, language)}"""
 
 
-def _stages_block(state: GameState, ll: LanguageLearning) -> list[str]:
-    ls = state.learning
-    assert ls is not None
-    lines = ["SYLLABUS (the only target words the NPC teaches) with ledger stages"]
-    for c in ll.concepts:
-        refs = f", object {', '.join(c.referents)}" if c.referents else ""
-        lines.append(
-            f"- {c.id}: {c.native} ({c.romanization}) = {c.gloss}{refs}; stage "
-            f"{ls.concept_stage.get(c.id, 'unseen')}; heard {ls.exposures.get(c.id, 0)}x"
-        )
-    for p in ll.patterns:
-        lines.append(
-            f"- {p.id}: {p.native_template} / {p.romanization_template} = {p.gloss_template}; "
-            f"stage {ls.pattern_stage.get(p.id, 'unseen')}"
-        )
-    return lines
+# ---------------------------------------------------------------- snapshot
 
 
-def _transcript_block(state: GameState, cartridge: Cartridge) -> list[str]:
-    lines = [f"RECENT TRANSCRIPT (last {TRANSCRIPT_WINDOW} entries)"]
-    window = state.transcript[-TRANSCRIPT_WINDOW:]
-    if not window:
-        lines.append("- (nothing yet)")
-    for entry in window:
-        if isinstance(entry, NarrationEntry):
-            lines.append(f"- t{entry.turn} narration: {entry.text}")
-        elif isinstance(entry, NpcEntry):
-            ln = entry.line
-            lines.append(
-                f"- t{entry.turn} {ln.speaker_name}: {ln.text} ({ln.romanization} = "
-                f"{ln.translation}) pattern={ln.pattern_id or '-'}"
-            )
-        elif isinstance(entry, PlayerEntry):
-            tapped = f" tapped {entry.tapped_object_id}" if entry.tapped_object_id else ""
-            lines.append(f"- t{entry.turn} PLAYER ({entry.input_mode}){tapped}: {entry.transcript!r}")
-        elif isinstance(entry, EvidenceEntry):
-            lines.append(
-                f"- t{entry.turn} ledger: {entry.evidence_type}/{entry.outcome} "
-                f"{', '.join(entry.concept_ids)} -> {entry.stage_after}"
-            )
-    return lines
-
-
-def _attempt_block(attempt: dict[str, Any] | None, turn: int) -> list[str]:
-    if attempt is None:
-        return ["PLAYER ATTEMPT: none"]
-    mode = attempt.get("input_mode", "text")
-    lines = [f"PLAYER ATTEMPT (turn {turn})", f"- input_mode: {mode}"]
+def attempt_text(mode: str, transcript: str, romanized: str | None, tapped: str | None,
+                 action: str | None) -> str:
     if mode == "tap":
-        lines.append(f"- tapped object: {attempt.get('tapped_object_id')}")
-    else:
-        lines.append(f"- transcript: {attempt.get('transcript', '')!r}")
-        if attempt.get("romanized"):
-            lines.append(f"- romanized: {attempt['romanized']!r}")
-        detected = attempt.get("detected_languages") or []
-        lines.append(f"- detected languages: {', '.join(detected) or 'unknown'}")
-        confidence = attempt.get("confidence")
-        if confidence is None:
-            lines.append("- recognition confidence: n/a (typed or not reported)")
+        return f"[the player {VERB_PHRASES.get(action or 'point', 'points at')} {tapped}]"
+    if mode == "text":
+        return f'the player types "{transcript}"'
+    sound = f"it sounded like: {romanized}; " if romanized else ""
+    return f'the player says something ({sound}the recognizer wrote it as "{transcript}")'
+
+
+def _entry_line(entry: Entry) -> str:
+    if isinstance(entry, NpcEntry):
+        line = entry.line
+        lit = f" [lit: {', '.join(line.highlight_object_ids)}]" if line.highlight_object_ids else ""
+        return f"  YOU SAID: {line.text}{lit}"
+    if isinstance(entry, NarrationEntry):
+        return f"  (narration: {entry.text})"
+    if isinstance(entry, ClueEntry):
+        return f"  [clue revealed: {entry.clue.id}]"
+    if isinstance(entry, LearnerEntry):
+        return "  > " + attempt_text(entry.input_mode, entry.transcript, entry.romanized,
+                                     entry.tapped_object_id, entry.action_id)
+    assert isinstance(entry, SceneEventEntry)
+    if entry.event == "object_moved":
+        return f"  [{entry.object_id} moved {entry.from_zone} -> {entry.to_zone}]"
+    return f"  [goal {entry.goal_id} done]"
+
+
+def _clue_lines(journey: Journey, scene: Scene) -> list[str]:
+    out: list[str] = []
+    for clue in scene.clues:
+        if clue.id in journey.game.clues:
+            status = "KNOWN to the player"
+        elif game.can_reveal(journey, scene, clue):
+            status = "CAN COME OUT NOW"
         else:
-            note = (
-                " (LOW: the recognizer may have misheard. Ask again gently, never judge, "
-                "record nothing)"
-                if float(confidence) < LOW_CONFIDENCE else ""
-            )
-            lines.append(f"- recognition confidence: {float(confidence):.2f}{note}")
-    return lines
+            ways = " OR ".join(", ".join(game.unmet(journey, scene, w)) for w in clue.reveal_when)
+            status = f"LOCKED, still needs: {ways}"
+        out.append(f"  {clue.id} | \"{clue.text}\" | {clue.gm_note} | {status}")
+    return out
 
 
 def build_snapshot(
-    state: GameState, cartridge: Cartridge, attempt: dict[str, Any] | None
+    journey: Journey, content: Content, scene: Scene, language: Language, persona: Persona,
+    attempt: Attempt | None,
 ) -> str:
-    """Fresh per-turn snapshot: premise, NPCs, world, beat, stages, transcript, attempt."""
-    ll = cartridge.language_learning
-    loc = cartridge.setting.location
-    out = ["SCENE", f"Premise: {cartridge.setting.premise}", f"Location: {loc.name}. {loc.description}"]
-    for npc in cartridge.npcs:
-        english = f" English: {npc.english}" if npc.english else ""
-        out.append(f"NPC {npc.id} {npc.name} ({npc.role}): {npc.persona}{english}")
-    out.append("")
-    out += _world_block(state, cartridge, ll)
-    if ll is not None and state.learning is not None:
-        out.append("")
-        out += _stages_block(state, ll)
-        out.append("")
-        out += _beat_block(state, cartridge, ll)
-    out.append("")
-    out += _transcript_block(state, cartridge)
-    out.append("")
-    out += _attempt_block(attempt, state.turn)
-    out.append("")
-    out.append(
-        "Respond now with ALL your tool calls in one response, ending with deliver_narration."
-    )
+    run, state = journey.scene, journey.game
+    assert run is not None
+    clock = content.journey.clock
+    left = game.minutes_left(journey, content)
+    cost = clock.minutes_per_turn if attempt is not None else 0
+    out = [
+        DIFFICULTY_RULES[state.difficulty].replace("{support}", SUPPORT_LANGUAGE),
+        f"\nYOUR MANNER RIGHT NOW\n{persona.prompt}",
+        f"\nTHE NIGHT SO FAR (turn {run.turn})",
+        f"clock: {game.clock_time(journey, content)}; {clock.label.lower()} at {clock.end}: "
+        f"{left} minutes left, and each player turn costs {clock.minutes_per_turn}",
+    ]
+    if attempt is not None and left <= cost:
+        out.append(
+            "THE CLOCK RUNS OUT WITH THIS TURN. The act ends now whatever happens. Let your "
+            "character and the narration land the moment (the hour strikes, the player has to "
+            "go); the game shows the ending after your turn."
+        )
+    carrying = [o.id for o in scene.objects if run.zones.get(o.id, o.zone) == "inventory"]
+    out.append(f"player: cash {state.wallet}; carrying: {', '.join(carrying) or 'nothing'}; "
+               f"spent here: {run.spent}")
+    out.append(f"trust: {game.trust(journey, scene)} (range -2..3)")
+    paid = state.paid_for.get(scene.id, [])
+    unpaid = [f"{o.id} ({game.price_of(journey, scene, o.id)})" for o in scene.objects
+              if o.price is not None and o.zone == "display" and o.id not in paid
+              and run.zones.get(o.id, o.zone) in ("counter", "gone")]
+    if paid:
+        out.append(f"already paid for here: {', '.join(paid)} (settled: never ask for that "
+                   "money again)")
+    if unpaid:
+        out.append(f"SERVED BUT NOT YET PAID FOR: {', '.join(unpaid)}. Your character has not "
+                   "forgotten, and wants it settled before doing the player any favours.")
+    if state.flags:
+        out.append(f"already happened: {', '.join(state.flags)}")
+
+    out.append("objects (id | word | where now (where else it can go) | price | player's verbs):")
+    for obj in scene.objects:
+        item = language.items[obj.item_id]
+        price = game.price_of(journey, scene, obj.id)
+        tag = "-" if price is None else (
+            f"{price} (floor {obj.price_floor})" if obj.price_floor is not None else f"{price}")
+        out.append(
+            f"  {obj.id} | {item.text} {item.roman} \"{item.gloss}\" | "
+            f"{run.zones.get(obj.id, obj.zone)} "
+            f"({', '.join(z for z in scene.zones if obj.can_be_in(z))}) | {tag} | "
+            f"{', '.join(obj.actions)}"
+        )
+    out.append("clues (id | what the player learns | how it comes out | status):")
+    out += _clue_lines(journey, scene)
+    pending = [f for f in scene.flags if f.id not in state.flags]
+    if pending:
+        out.append("events to flag when they happen (set_flag):")
+        out += [f"  {f.id}: {f.when}" for f in pending]
+    out.append("goals:")
+    for goal in scene.goals:
+        mark = "x" if goal.id in run.goals_done else " "
+        out.append(f"  [{mark}] {goal.id}: {goal.label} (done when {describe_when(goal.when)})")
+    out.append(f"your character's mood: {run.mood}")
+
+    out.append("\nWORDS OF THIS ACT (this player's record -> how to present it)")
+    for item_id in scene.targets:
+        item, record = language.items[item_id], journey.vocab.get(item_id)
+        status = record.state if record else "not_encountered"
+        seen = record.appearances if record else 0
+        earlier = (
+            f", first met in {record.first_scene}"
+            if record and record.first_scene not in ("", scene.id) else ""
+        )
+        guidance = vocab.GUIDANCE[vocab.presentation(record, scene.id, item.learner_side)]
+        out.append(
+            f"  {item_id} | {item.text} {item.roman} \"{item.gloss}\" | {status}, said {seen}x"
+            f"{earlier} -> {guidance}"
+        )
+    owed = vocab.owed_items(journey, scene)
+    if owed:
+        out.append(
+            "If the story gives you a natural chance, let "
+            + ", ".join(language.items[i].text for i in owed)
+            + " come back once with no highlight. Never bend the story for it."
+        )
+    extras = [i for i in scene.support_words if i in language.items]
+    if extras:
+        out.append("other plain words you can lean on: " + "; ".join(
+            f"{language.items[i].text} {language.items[i].roman} \"{language.items[i].gloss}\""
+            for i in extras))
+
+    if run.transcript:
+        out.append("\nSO FAR")
+        out += [_entry_line(e) for e in run.transcript[-TRANSCRIPT_WINDOW:]]
+        exchange = run.exchange
+        helped = {
+            0: "none",
+            1: "they asked to hear your last lines again, slowly",
+            2: "they asked what your character wants and were shown your intent hint",
+        }[exchange.help_level]
+        out.append(
+            "\nYOUR LAST LINES put to them: "
+            f"{', '.join(exchange.posed_item_ids) or 'no listed words'}; lit up: "
+            f"{', '.join(exchange.highlighted_item_ids) or 'nothing'}; help since: {helped}"
+        )
+
+    out.append("\nNOW")
+    if attempt is None:
+        out.append(
+            "The player has just walked in; nobody has spoken. Open the act: narration sets "
+            "the scene in a couple of sharp sentences (where they are, what is at stake, what "
+            "catches the eye), and your character reacts to a stranger turning up the way THEY "
+            "would. No record_item, pay or adjust_trust: the player has done nothing yet."
+        )
+    else:
+        out.append(attempt_text(attempt.input_mode, attempt.transcript, attempt.romanized,
+                                attempt.tapped_object_id, attempt.action_id))
+        if attempt.input_mode == "speech" and attempt.confidence is not None:
+            low = " LOW CONFIDENCE" if attempt.confidence < LOW_CONFIDENCE else ""
+            out.append(f"(speech recognition confidence {attempt.confidence:.2f}{low})")
     return "\n".join(out)

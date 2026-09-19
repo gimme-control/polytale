@@ -1,36 +1,35 @@
-// {session_id, token} persistence so a refresh rebuilds the game from PublicState.
+// {journey_id, token} persistence so a refresh rebuilds the game from PublicState.
 
-export interface SavedSession {
-  session_id: string;
+export interface SavedJourney {
+  journey_id: string;
   token: string;
-  cartridge_id: string;
 }
 
 function key(mock: boolean) {
-  return mock ? "polytale.session.mock" : "polytale.session";
+  return mock ? "polytale.journey.mock" : "polytale.journey";
 }
 
-export function loadSession(mock: boolean): SavedSession | null {
+export function loadJourney(mock: boolean): SavedJourney | null {
   try {
     const raw = localStorage.getItem(key(mock));
     if (!raw) return null;
     const v = JSON.parse(raw);
-    if (typeof v?.session_id === "string" && typeof v?.token === "string") return v as SavedSession;
+    if (typeof v?.journey_id === "string" && typeof v?.token === "string") return v as SavedJourney;
   } catch {
     /* storage blocked or corrupt */
   }
   return null;
 }
 
-export function saveSession(mock: boolean, s: SavedSession): void {
+export function saveJourney(mock: boolean, s: SavedJourney): void {
   try {
     localStorage.setItem(key(mock), JSON.stringify(s));
   } catch {
-    /* storage blocked: session lives only in memory */
+    /* storage blocked: the journey lives only in memory */
   }
 }
 
-export function clearSession(mock: boolean): void {
+export function clearJourney(mock: boolean): void {
   try {
     localStorage.removeItem(key(mock));
   } catch {

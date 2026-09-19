@@ -1,6 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api } from "./api";
-import { useGame } from "../store";
 
 export function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -17,23 +15,23 @@ export function useElementSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
-export function useNow(intervalMs: number, enabled = true) {
-  const [now, setNow] = useState(() => Date.now());
+/** Close a popover on outside press or Escape. */
+export function useDismiss(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!enabled) return;
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs, enabled]);
-  return now;
-}
-
-/**
- * Resolve an art/plate URL from the server. Absolute paths (`/api/...`, `/mock-art/...`,
- * `http...`) are used as-is; a bare cartridge-relative path (`art/plate.png`) is routed
- * through the art endpoint.
- */
-export function resolveArt(url: string | undefined | null): string | undefined {
-  if (!url) return undefined;
-  if (/^(https?:|blob:|data:|\/)/.test(url)) return url;
-  return api.artUrl(useGame.getState().cartridgeId, url);
+    if (!open) return;
+    const down = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("pointerdown", down);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("keydown", key);
+    };
+  }, [open, close]);
+  return ref;
 }

@@ -1,0 +1,284 @@
+{
+  "locale": "zh-CN",
+  "name": "Mandarin Chinese",
+  "native_name": "中文",
+  "romanization": {
+    "system": "pinyin",
+    "label": "Pinyin"
+  },
+  "word_spacing": false,
+  "currency_symbol": "¥",
+  "typing_note": "Learners often type pinyin without tone marks or spaces (\"pijiu\", \"duoshao qian\", \"xiexie\"). Treat it as the word itself.",
+  "phrasebook_voice": {
+    "gemini_voice": "Achird",
+    "elevenlabs_voice_id": "",
+    "style": "A clear, neutral, friendly voice saying one short phrase at an easy pace, for someone to copy."
+  },
+  "items": {
+    "hello": {
+      "text": "你好",
+      "roman": "nǐ hǎo",
+      "gloss": "hello",
+      "kind": "phrase"
+    },
+    "thanks": {
+      "text": "谢谢",
+      "roman": "xièxie",
+      "gloss": "thanks",
+      "kind": "phrase"
+    },
+    "want": {
+      "text": "要",
+      "roman": "yào",
+      "gloss": "want / I'll have …",
+      "kind": "verb"
+    },
+    "this": {
+      "text": "这个",
+      "roman": "zhège",
+      "gloss": "this one",
+      "kind": "phrase"
+    },
+    "how_much": {
+      "text": "多少钱",
+      "roman": "duōshao qián",
+      "gloss": "how much (is it)?",
+      "kind": "phrase",
+      "learner_side": true
+    },
+    "money": {
+      "text": "钱",
+      "roman": "qián",
+      "gloss": "money",
+      "kind": "noun"
+    },
+    "menu": {
+      "text": "菜单",
+      "roman": "càidān",
+      "gloss": "menu",
+      "kind": "noun"
+    },
+    "beer": {
+      "text": "啤酒",
+      "roman": "píjiǔ",
+      "gloss": "beer",
+      "kind": "noun"
+    },
+    "water": {
+      "text": "水",
+      "roman": "shuǐ",
+      "gloss": "water",
+      "kind": "noun"
+    },
+    "tea": {
+      "text": "茶",
+      "roman": "chá",
+      "gloss": "tea",
+      "kind": "noun"
+    },
+    "noodles": {
+      "text": "面条",
+      "roman": "miàntiáo",
+      "gloss": "noodles",
+      "kind": "noun"
+    },
+    "dumplings": {
+      "text": "饺子",
+      "roman": "jiǎozi",
+      "gloss": "dumplings",
+      "kind": "noun"
+    },
+    "spicy": {
+      "text": "辣",
+      "roman": "là",
+      "gloss": "spicy",
+      "kind": "adjective"
+    },
+    "friend": {
+      "text": "朋友",
+      "roman": "péngyou",
+      "gloss": "friend",
+      "kind": "noun"
+    },
+    "where": {
+      "text": "在哪儿",
+      "roman": "zài nǎr",
+      "gloss": "where (is …)?",
+      "kind": "phrase"
+    },
+    "baijiu": {
+      "text": "白酒",
+      "roman": "báijiǔ",
+      "gloss": "the house spirit (strong)",
+      "kind": "noun"
+    },
+    "cheers": {
+      "text": "干杯",
+      "roman": "gānbēi",
+      "gloss": "cheers!",
+      "kind": "phrase"
+    },
+    "scarf": {
+      "text": "围巾",
+      "roman": "wéijīn",
+      "gloss": "scarf",
+      "kind": "noun"
+    },
+    "too_expensive": {
+      "text": "太贵了",
+      "roman": "tài guì le",
+      "gloss": "too expensive!",
+      "kind": "phrase"
+    },
+    "cheaper": {
+      "text": "便宜一点",
+      "roman": "piányi yìdiǎn",
+      "gloss": "a bit cheaper",
+      "kind": "phrase"
+    },
+    "yes": {
+      "text": "对",
+      "roman": "duì",
+      "gloss": "yes / right",
+      "kind": "phrase"
+    },
+    "good": {
+      "text": "好",
+      "roman": "hǎo",
+      "gloss": "good / OK",
+      "kind": "adjective"
+    },
+    "no_want": {
+      "text": "不要",
+      "roman": "bú yào",
+      "gloss": "no thanks / don't want",
+      "kind": "phrase"
+    },
+    "not_spicy": {
+      "text": "不辣",
+      "roman": "bú là",
+      "gloss": "not spicy",
+      "kind": "adjective"
+    },
+    "delicious": {
+      "text": "好吃",
+      "roman": "hǎochī",
+      "gloss": "delicious",
+      "kind": "adjective"
+    },
+    "photo": {
+      "text": "照片",
+      "roman": "zhàopiàn",
+      "gloss": "photo",
+      "kind": "noun"
+    },
+    "tab": {
+      "text": "账单",
+      "roman": "zhàngdān",
+      "gloss": "the bill / tab",
+      "kind": "noun"
+    },
+    "night_market": {
+      "text": "夜市",
+      "roman": "yèshì",
+      "gloss": "night market",
+      "kind": "noun"
+    },
+    "station": {
+      "text": "车站",
+      "roman": "chēzhàn",
+      "gloss": "station",
+      "kind": "noun"
+    },
+    "platform": {
+      "text": "站台",
+      "roman": "zhàntái",
+      "gloss": "platform",
+      "kind": "noun"
+    },
+    "train": {
+      "text": "火车",
+      "roman": "huǒchē",
+      "gloss": "train",
+      "kind": "noun"
+    },
+    "number_two": {
+      "text": "二号",
+      "roman": "èr hào",
+      "gloss": "number two",
+      "kind": "phrase"
+    },
+    "she": {
+      "text": "她",
+      "roman": "tā",
+      "gloss": "she / her",
+      "kind": "pronoun"
+    },
+    "seen": {
+      "text": "见过",
+      "roman": "jiànguo",
+      "gloss": "have seen",
+      "kind": "verb"
+    },
+    "left": {
+      "text": "走了",
+      "roman": "zǒu le",
+      "gloss": "left / gone",
+      "kind": "verb"
+    },
+    "one_more": {
+      "text": "再来一个",
+      "roman": "zài lái yí ge",
+      "gloss": "one more",
+      "kind": "phrase"
+    },
+    "kuai": {
+      "text": "块",
+      "roman": "kuài",
+      "gloss": "yuan (money unit)",
+      "kind": "noun"
+    },
+    "five": {
+      "text": "五",
+      "roman": "wǔ",
+      "gloss": "5",
+      "kind": "number"
+    },
+    "eight": {
+      "text": "八",
+      "roman": "bā",
+      "gloss": "8",
+      "kind": "number"
+    },
+    "ten": {
+      "text": "十",
+      "roman": "shí",
+      "gloss": "10",
+      "kind": "number"
+    },
+    "twelve": {
+      "text": "十二",
+      "roman": "shí'èr",
+      "gloss": "12",
+      "kind": "number"
+    },
+    "fifteen": {
+      "text": "十五",
+      "roman": "shíwǔ",
+      "gloss": "15",
+      "kind": "number"
+    },
+    "twenty": {
+      "text": "二十",
+      "roman": "èrshí",
+      "gloss": "20",
+      "kind": "number"
+    },
+    "thirty": {
+      "text": "三十",
+      "roman": "sānshí",
+      "gloss": "30",
+      "kind": "number"
+    }
+  }
+}

@@ -1,0 +1,366 @@
+{
+  "id": "bar",
+  "name": "The Corner Bar",
+  "tagline": "Someone here knows where Mei went.",
+  "intro": "22:40. The Corner Bar: the name Mei texted you last week. Small, dim, nearly empty. The man behind the counter looks up from a glass he has clearly been polishing for a while. You have her photo, ¥60, and no words at all.",
+  "setting": "A small, dim neighbourhood bar late at night, seen from a stool at the counter. The bartender stands behind the counter facing the player. On the back shelf behind him, in plain view: a bottle of beer, a glass of water, a small teapot with a cup, a shot glass of the house baijiu he infuses himself, and a closed menu booklet. Clipped behind the counter where a customer can see it: one unpaid tab slip (Mei's: ¥40). The player carries a polaroid of Mei and some cash. That is everything here: no food, no wine, no cocktails, no card reader, no phone to borrow, no other staff. It is quiet; rain on the window, two regulars murmuring somewhere behind the player. Things happen physically: what is ordered is set on the counter, the photo can be laid on the counter or handed over, the tab slip can be unclipped and put down, cash changes hands over the counter.",
+  "art": {
+    "background": "art/bg.webp",
+    "cover": "art/cover.webp",
+    "moods": {
+      "neutral": "art/bg.webp",
+      "pleased": "art/bg_pleased.webp",
+      "puzzled": "art/bg_puzzled.webp"
+    }
+  },
+  "npc": {
+    "id": "bartender",
+    "name": "Chen",
+    "names": {
+      "zh-CN": "老陈",
+      "ja-JP": "マスター"
+    },
+    "role": "bartender",
+    "character": "Mid-fifties, has run this bar alone for twenty years. Dry, unhurried, observant; more at ease polishing a glass than making small talk, but with a deadpan sense of humour that comes out once he decides he likes someone. Has never left the country and speaks nothing but the local language; good at reading a pointed finger and a hopeful face. Protective of his regulars the way other men are of family.",
+    "voice": {
+      "gemini_voice": "Charon",
+      "elevenlabs_voice_id": "",
+      "style": "A man in his fifties tending a neighbourhood bar late at night: relaxed, low, a little gravelly, unhurried. Natural conversational speed, not a language lesson."
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.262
+    },
+    "wants": "A quiet night, a settled till, and to know his regulars are safe. He is sore about one unpaid tab tonight (not the money: the worry). He is privately proud of the house baijiu he infuses himself and which nobody ever orders; a customer who orders it, toasts with him and does not wince has a friend for life. He likes manners: a greeting, a thank-you, paying without fuss. He dislikes being shouted at in a foreign language or having a photo waved in his face before anyone has even ordered.",
+    "secrets": "He knows Mei well: she has come in every Friday for two years. Tonight she sat at the end of the counter for two hours watching the door, waiting for a friend who never showed; around ten she left upset WITHOUT paying (¥40, the first time ever; he is worried, not angry). She said she was going to eat at Lin's stall in the night market, which is what she does when she is down. He does not hand a young woman's whereabouts to a stranger holding her photo: for all he knows this is the person who stood her up, or worse. He opens up once the stranger has shown they are decent: settling her tab says it fastest; being a good customer and good company says it too; sharing his baijiu says it his favourite way.",
+    "trust": 0
+  },
+  "zones": [
+    "display",
+    "counter",
+    "npc",
+    "inventory",
+    "gone"
+  ],
+  "objects": [
+    {
+      "id": "beer",
+      "item_id": "beer",
+      "art": "art/obj_beer.png",
+      "zone": "display",
+      "price": 20,
+      "positions": {
+        "display": {
+          "x": 0.175,
+          "y": 0.552,
+          "h": 0.16
+        },
+        "counter": {
+          "x": 0.385,
+          "y": 0.885,
+          "h": 0.31
+        }
+      },
+      "actions": [
+        "point",
+        "drink"
+      ]
+    },
+    {
+      "id": "water",
+      "item_id": "water",
+      "art": "art/obj_water.png",
+      "zone": "display",
+      "price": 5,
+      "positions": {
+        "display": {
+          "x": 0.235,
+          "y": 0.552,
+          "h": 0.106
+        },
+        "counter": {
+          "x": 0.48,
+          "y": 0.895,
+          "h": 0.205
+        }
+      },
+      "actions": [
+        "point",
+        "drink"
+      ]
+    },
+    {
+      "id": "tea",
+      "item_id": "tea",
+      "art": "art/obj_tea.png",
+      "zone": "display",
+      "price": 15,
+      "positions": {
+        "display": {
+          "x": 0.315,
+          "y": 0.555,
+          "h": 0.083
+        },
+        "counter": {
+          "x": 0.59,
+          "y": 0.89,
+          "h": 0.161
+        }
+      },
+      "actions": [
+        "point",
+        "drink"
+      ]
+    },
+    {
+      "id": "baijiu",
+      "item_id": "baijiu",
+      "art": "art/obj_baijiu.png",
+      "zone": "display",
+      "price": 15,
+      "actions": [
+        "point",
+        "drink"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.4,
+          "y": 0.555,
+          "h": 0.06
+        },
+        "counter": {
+          "x": 0.7,
+          "y": 0.9,
+          "h": 0.12
+        }
+      }
+    },
+    {
+      "id": "menu",
+      "item_id": "menu",
+      "art": "art/obj_menu.png",
+      "zone": "display",
+      "positions": {
+        "display": {
+          "x": 0.7,
+          "y": 0.555,
+          "h": 0.162
+        },
+        "counter": {
+          "x": 0.15,
+          "y": 0.9,
+          "h": 0.324
+        }
+      },
+      "actions": [
+        "point",
+        "take"
+      ]
+    },
+    {
+      "id": "tab",
+      "item_id": "tab",
+      "art": "art/obj_tab.png",
+      "zone": "display",
+      "price": 40,
+      "actions": [
+        "point",
+        "pay"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.6,
+          "y": 0.5,
+          "h": 0.09
+        },
+        "counter": {
+          "x": 0.28,
+          "y": 0.92,
+          "h": 0.16
+        },
+        "npc": {
+          "x": 0.56,
+          "y": 0.7,
+          "h": 0.1
+        }
+      }
+    },
+    {
+      "id": "photo",
+      "item_id": "friend",
+      "art": "art/obj_photo.png",
+      "zone": "inventory",
+      "actions": [
+        "show",
+        "give"
+      ],
+      "positions": {
+        "counter": {
+          "x": 0.52,
+          "y": 0.93,
+          "h": 0.16
+        },
+        "npc": {
+          "x": 0.56,
+          "y": 0.7,
+          "h": 0.1
+        }
+      }
+    },
+    {
+      "id": "money",
+      "item_id": "money",
+      "art": "art/obj_money.png",
+      "zone": "inventory",
+      "positions": {
+        "counter": {
+          "x": 0.83,
+          "y": 0.9,
+          "h": 0.102
+        },
+        "npc": {
+          "x": 0.655,
+          "y": 0.775,
+          "h": 0.073
+        }
+      },
+      "actions": [
+        "pay"
+      ]
+    }
+  ],
+  "targets": [
+    "hello",
+    "thanks",
+    "friend",
+    "where",
+    "want",
+    "beer",
+    "tea",
+    "baijiu",
+    "how_much",
+    "money",
+    "cheers"
+  ],
+  "goals": [
+    {
+      "id": "ask",
+      "label": "Show someone Mei's photo",
+      "when": {
+        "flag": "photo_shown"
+      }
+    },
+    {
+      "id": "trail",
+      "label": "Find out where Mei went",
+      "when": {
+        "clue": "market"
+      }
+    }
+  ],
+  "support_words": [
+    "water",
+    "menu",
+    "this",
+    "yes",
+    "good",
+    "no_want",
+    "photo",
+    "tab",
+    "night_market",
+    "she",
+    "seen",
+    "left",
+    "one_more",
+    "kuai",
+    "five",
+    "fifteen",
+    "twenty",
+    "thirty"
+  ],
+  "flags": [
+    {
+      "id": "photo_shown",
+      "when": "the player has shown or handed the bartender Mei's photo"
+    },
+    {
+      "id": "tab_paid",
+      "when": "the player has paid Mei's unpaid tab",
+      "requires_paid": [
+        "tab"
+      ]
+    },
+    {
+      "id": "drank_baijiu",
+      "when": "the player has drunk the house baijiu"
+    },
+    {
+      "id": "tipsy",
+      "when": "the player has drunk a beer or a baijiu; from then on the narration is a little looser and braver"
+    }
+  ],
+  "clues": [
+    {
+      "id": "regular",
+      "title": "He knows her",
+      "text": "The bartender recognised Mei's photo at once. She is a regular here. He is still deciding whether you are good news.",
+      "gm_note": "Comes out the moment he sees the photo: a flicker he cannot hide, 'your friend?'. He confirms he knows her; not yet where she is.",
+      "reveal_when": [
+        {
+          "flags": [
+            "photo_shown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "waited",
+      "title": "She waited for you",
+      "text": "Mei sat at this counter for two hours tonight, watching the door. Then she left, upset, without paying.",
+      "gm_note": "He nods at the empty stool at the end of the counter, the clock, the tab slip.",
+      "reveal_when": [
+        {
+          "flags": [
+            "photo_shown"
+          ],
+          "trust_at_least": 1
+        },
+        {
+          "flags": [
+            "tab_paid"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "market",
+      "title": "The night market",
+      "text": "Mei went to eat at Lin's stall in the night market: it is what she does when she is upset. Ten minutes on foot.",
+      "gm_note": "He says where she went (night market) and points the way out of the door. This ends the act.",
+      "reveal_when": [
+        {
+          "flags": [
+            "photo_shown",
+            "tab_paid"
+          ]
+        },
+        {
+          "flags": [
+            "photo_shown"
+          ],
+          "trust_at_least": 2
+        },
+        {
+          "flags": [
+            "photo_shown",
+            "drank_baijiu"
+          ],
+          "trust_at_least": 1
+        }
+      ],
+      "key_items": [
+        "night_market"
+      ]
+    }
+  ]
+}

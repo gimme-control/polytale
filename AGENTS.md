@@ -1,24 +1,29 @@
 # AGENTS.md - Polytale
 
-Polytale (working title "Relay") is a voice-first adventure for learning practical spoken
-language. `SPEC.md` is the build contract (layout, cartridge schema, ledger rules, tools,
-payloads, REST API). The product doc is `../business/language-learning-prd.md`.
+Polytale is a scenario-based language learning game for adults: a live LLM character who speaks
+only the target language, a scene you can see, and tasks you complete by speaking, typing, or
+pointing. `SPEC.md` is the build contract (content schema, vocabulary rules, tools, payloads,
+REST). `docs/PRD.md` is the product doc. The name is Polytale.
 
 Polytale lives inside the Arbitale checkout only so code can be copied from it. It is a separate
 project with its own git repo: never import from the parent directory and never modify it.
 
 ## Invariants
 
-- The LLM is the DM. It commits every change through typed tools; executors in `core/tools.py`
-  validate ids and mutate state deterministically. Code owns both the world and the learning
-  ledger.
-- No hardcoding model output: no regex or keyword guards over model prose, no rewriting what the
-  model wrote. Fix the prompt (`core/prompt.py`), the tool declarations, or the snapshot instead.
-  Invalid tool args come back to the model as `ERROR:` receipts inside the same loop.
-- Recognition confidence is never learning evidence. A tap fallback never counts as speech.
-- The recap reports observed behaviour from the ledger. No fluency scores.
-- Cartridges are declarative JSON. Art is generated offline (`scripts/generate_art.py`).
-- `core/` never imports `fastapi`, `server`, or `media` (`scripts/verify_imports.py`).
+- The LLM plays the character and commits every change through typed tools; executors in
+  `core/tools.py` validate ids and mutate state deterministically. Code owns the world and the
+  vocabulary record.
+- No hardcoding model output: no regex or keyword guards over model prose, no rewriting it. Fix
+  the prompt (`core/prompt.py`), the tool declarations, or the snapshot. Invalid tool args come
+  back to the model as `ERROR:` receipts inside the same loop.
+- No native-language translation during play. Glosses appear only on the end-of-scene summary.
+- Everything taught must be showable on screen. Highlights are drawn by the client from object
+  ids; art is generated offline (`scripts/generate_art.py`), never at runtime.
+- Language-agnostic: no target-language literals in `core/`, `server/`, `media/`, `web/src`. They
+  live in `content/languages/<locale>.json` (`scripts/test_language_agnostic.py` enforces this).
+- Outcomes (first try / with help / with hint / missed) are stamped from the server's exchange
+  ledger, never from a model claim. The summary reports observed behaviour. No scores.
+- Content is declarative JSON. `core/` never imports `fastapi`, `server`, or `media`.
 
 ## Run
 

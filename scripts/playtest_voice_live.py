@@ -1,159 +1,247 @@
-"""Live end-to-end voice playtest over HTTP against a running server (real STT, DM, TTS).
+"""Live end-to-end playtest of "The Last Train" over HTTP (real GM, phrasebook, STT, TTS).
 
-Plays the golden path with recorded learner audio from scripts/fixtures/learner_audio/:
-  kagi.wav → key_kudasai.wav (mixed-language request) → chizu_please.wav (transfer)
-and checks the world, the ledger, audio for every NPC line, refresh restoration and the recap.
+Plays whole journeys the way different players would and prints each as a readable transcript
+(narration, lines, ledgers), so a human can judge whether it is FUN:
+  payer     settles Mei's tab, haggles, takes the spicy dare          (voice + verbs + phrasebook)
+  charmer   pays for nothing he does not drink: baijiu, a toast, manners; eats politely
+  tourist   immersion mode, orders the wrong things, dithers, runs low on cash and time
+The GM is a live model, so the driver adapts and asserts on state and payload shape only.
 
-Needs the API running (bash run.sh --quiet, or uvicorn on POLYTALE_API).
-Run: PYTHONPATH=. python scripts/playtest_voice_live.py [--runs N] [--keep-going]
+Needs the API running (bash run.sh --quiet, or uvicorn server.app:app --port 8100).
+Run: PYTHONPATH=. python scripts/playtest_voice_live.py [--only payer,charmer,tourist]
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import statistics
 import sys
 import time
+import unicodedata
 from typing import Any
 
 import httpx
 
-from scripts.testkit import CARTRIDGE_ID, ROOT, Checker
+from scripts.testkit import ROOT, Checker
 
-API = __import__("os").environ.get("POLYTALE_API", "http://127.0.0.1:8100")
-AUDIO = ROOT / "scripts" / "fixtures" / "learner_audio"
+API = os.environ.get("POLYTALE_API", "http://127.0.0.1:8100")
 T = Checker("playtest_voice_live")
-LATENCY: dict[str, list[float]] = {"stt": [], "turn": [], "first_audio": []}
+LATENCY: dict[str, list[float]] = {"opening": [], "turn": [], "phrase": [], "stt": [],
+                                   "first_audio": []}
+ENDINGS: dict[str, str] = {}
 
 
-def timed(fn, *a, **kw) -> tuple[Any, float]:
-    t0 = time.monotonic()
-    out = fn(*a, **kw)
-    return out, time.monotonic() - t0
+def typed(romanization: str) -> str:
+    plain = unicodedata.normalize("NFD", romanization)
+    return "".join(ch for ch in plain if not unicodedata.combining(ch)).lower()
 
 
-def fetch_audio(http: httpx.Client, sid: str, token: str, line: dict) -> float:
-    r, dt = timed(http.get, f"{API}{line['audio_url']}", params={"token": token})
-    T.check(f"audio {line['line_id']} 200 ({dt:.2f}s)", r.status_code == 200
-            and len(r.content) > 1000, (r.status_code, len(r.content)))
-    return dt
+class Player:
+    def __init__(self, http: httpx.Client, name: str, difficulty: str = "story",
+                 persona: str = "warm") -> None:
+        self.http, self.name = http, name
+        body = http.post(f"{API}/api/journeys", json={"persona_id": persona}).json()
+        self.jid, self.token = body["journey_id"], body["token"]
+        self.hdr = {"X-Journey-Token": self.token}
+        self.locale = body["state"]["language"]["locale"]
+        self.audio_dir = ROOT / "scripts" / "fixtures" / "learner_audio" / self.locale
+        self.last: dict[str, Any] = {}
+        story = body["state"]["story"]
+        print(f"\n{'=' * 78}\n{name.upper()}  —  {story['title']}: {story['premise']}")
+        if difficulty != "story":
+            r = http.post(self.url("difficulty"), json={"difficulty": difficulty}, headers=self.hdr)
+            T.check(f"{name}: difficulty switch", r.status_code == 200
+                    and r.json()["game"]["difficulty"] == difficulty)
+
+    def url(self, path: str) -> str:
+        return f"{API}/api/journeys/{self.jid}/{path}"
+
+    def state(self) -> dict:
+        return self.http.get(f"{API}/api/journeys/{self.jid}", headers=self.hdr).json()
+
+    @property
+    def complete(self) -> bool:
+        return bool(self.last.get("scene_complete"))
+
+    def _turn(self, label: str, r: httpx.Response, dt: float) -> dict:
+        T.check(f"{self.name} {label}: 200 ({dt:.1f}s)", r.status_code == 200, r.text[:300])
+        res = self.last = r.json()
+        print(f"\n> {label}")
+        print(f"  {res['narration']}")
+        for line in res["lines"]:
+            lit = f"  [lit: {', '.join(line['highlight_object_ids'])}]" if line[
+                "highlight_object_ids"] else ""
+            print(f"    {line['speaker_name']}: {line['text']}   {line['romanization']}{lit}")
+        for event in res["events"]:
+            if event["kind"] == "clue":
+                print(f"  ** NOTEBOOK: {event['clue']['title']} — {event['clue']['text']}")
+        g = res["game"]
+        print(f"  [{g['clock']['time']} · {g['clock']['minutes_left']} min · ¥{g['wallet']} · "
+              f"trust {g['trust']} · {dt:.1f}s]")
+        T.check(f"{self.name} {label}: payload shape",
+                res["narration"] and "stage_direction" not in res and res["lines"]
+                and all(s["t"] for ln in res["lines"] for s in ln["segments"])
+                and set(g) == {"wallet", "clock", "trust", "clues", "difficulty", "prices"})
+        if res.get("ending"):
+            e = res["ending"]
+            ENDINGS[self.name] = e["id"]
+            print(f"\n*** {e['title'].upper()} ***\n{e['text']}\n{e['stats']}")
+        return res
+
+    def enter(self) -> dict:
+        t = time.monotonic()
+        r = self.http.post(self.url("scene"), json={}, headers=self.hdr)
+        dt = time.monotonic() - t
+        LATENCY["opening"].append(dt)
+        res = self._turn("(arrives)", r, dt)
+        t = time.monotonic()
+        audio = self.http.get(f"{API}{res['lines'][0]['audio_url']}?token={self.token}")
+        LATENCY["first_audio"].append(time.monotonic() - t)
+        T.check(f"{self.name}: first line audio", audio.status_code == 200
+                and len(audio.content) > 1000, audio.status_code)
+        return res
+
+    def act(self, label: str, body: dict) -> dict:
+        t = time.monotonic()
+        r = self.http.post(self.url("act"), json=body, headers=self.hdr)
+        dt = time.monotonic() - t
+        LATENCY["turn"].append(dt)
+        return self._turn(label, r, dt)
+
+    def verb(self, action: str, object_id: str) -> dict:
+        return self.act(f"[{action} {object_id}]", {"tap_object_id": object_id,
+                                                    "action_id": action})
+
+    def ask(self, english: str) -> dict:
+        """Phrasebook, then type it as a beginner would (no tone marks)."""
+        t = time.monotonic()
+        r = self.http.post(self.url("phrase"), json={"text": english}, headers=self.hdr)
+        LATENCY["phrase"].append(time.monotonic() - t)
+        if not T.check(f"{self.name}: phrasebook {english!r}", r.status_code == 200, r.text[:200]):
+            return self.last
+        phrase = r.json()
+        glosses = " · ".join(f"{s['t']}={s['g']}" for s in phrase["segments"] if s["g"])
+        print(f"\n? how do I say \"{english}\" → {phrase['text']}  {phrase['romanization']}  "
+              f"({glosses})")
+        return self.act(f'types "{typed(phrase["romanization"])}"',
+                        {"text": typed(phrase["romanization"])})
+
+    def speak(self, clip: str) -> dict:
+        """A recorded learner utterance through real STT, then played as the turn."""
+        path = self.audio_dir / f"{clip}.wav"
+        t = time.monotonic()
+        r = self.http.post(self.url("transcribe"), headers=self.hdr,
+                           files={"audio": (path.name, path.read_bytes(), "audio/wav")})
+        LATENCY["stt"].append(time.monotonic() - t)
+        if not T.check(f"{self.name}: STT {clip}", r.status_code == 200, r.text[:200]):
+            return self.last
+        heard = r.json()
+        return self.act(f'says [{clip}.wav] heard as "{heard["transcript"]}" '
+                        f'({heard["romanized"]}, {heard["confidence"]})',
+                        {"attempt_id": heard["attempt_id"]})
+
+    def play(self, moves: list[tuple[str, ...]]) -> None:
+        for kind, *args in moves:
+            if self.complete:
+                return
+            {"verb": self.verb, "ask": self.ask, "speak": self.speak,
+             "type": lambda s: self.act(f'types "{s}"', {"text": s})}[kind](*args)
+
+    def wrap(self) -> None:
+        state = self.state()
+        ending = state["ending"]
+        T.check(f"{self.name}: the story reached an ending (never a dead end)",
+                ending is not None, state["game"])
+        if state["summary"]:
+            print("\nSUMMARY: " + " | ".join(state["summary"]["lines"]))
+            print("PHRASEBOOK: " + "; ".join(f"{p['source']} = {p['text']}"
+                                             for p in state["summary"]["phrasebook"]))
+        if state["phrasebook"]:
+            p = state["phrasebook"][0]
+            audio = self.http.get(f"{API}{p['audio_url']}?token={self.token}")
+            T.check(f"{self.name}: phrase audio", audio.status_code == 200
+                    and len(audio.content) > 1000, audio.status_code)
 
 
-def show(result: dict) -> None:
-    print(f"   narration: {result['narration']}")
-    for line in result["spoken_lines"]:
-        print(f"   {line['speaker_name']}: {line['text']}  /  {line['romanization']}"
-              f"  [{line['translation']}] pattern={line['pattern_id']}")
-    for ev in result["evidence"]:
-        print(f"   evidence: {ev['evidence_type']} {ev['outcome']} {ev['stage_after']} "
-              f"support={ev['support_level']}")
+def payer(http: httpx.Client) -> None:
+    p = Player(http, "payer")
+    p.enter()
+    p.play([("speak", "pijiu"), ("verb", "show", "photo"), ("ask", "where is she?"),
+            ("verb", "pay", "tab"), ("ask", "where did she go?"), ("verb", "drink", "beer"),
+            ("ask", "please, she is my friend")])
+    T.check("payer: act 1 done", p.complete, p.last.get("game"))
+    p.enter()
+    p.play([("verb", "show", "photo"), ("verb", "point", "scarf"),
+            ("ask", "how much are the dumplings?"), ("ask", "too expensive!"),
+            ("ask", "ok, dumplings please"), ("verb", "eat", "chili"), ("speak", "xiexie"),
+            ("ask", "where is she?"), ("ask", "where is my friend now?")])
+    p.wrap()
 
 
-def speak(http: httpx.Client, sid: str, hdr: dict, clip: str) -> dict:
-    wav = (AUDIO / clip).read_bytes()
-    r, dt = timed(http.post, f"{API}/api/sessions/{sid}/transcribe",
-                  files={"audio": (clip, wav, "audio/wav")}, headers=hdr)
-    LATENCY["stt"].append(dt)
-    T.check(f"transcribe {clip} 200", r.status_code == 200, r.text)
-    tr = r.json()
-    print(f"\n>> {clip}: heard {tr['transcript']!r} ({tr['romanized']}) "
-          f"langs={tr['detected_languages']} conf={tr['confidence']} [{dt:.2f}s]")
-    r, dt = timed(http.post, f"{API}/api/sessions/{sid}/act",
-                  json={"attempt_id": tr["attempt_id"]}, headers=hdr)
-    LATENCY["turn"].append(dt)
-    T.check(f"act {clip} 200 ({dt:.2f}s)", r.status_code == 200, r.text)
-    result = r.json()
-    show(result)
-    for line in result["spoken_lines"]:
-        T.check(f"{line['line_id']} has romanization+translation",
-                bool(line["romanization"]) and bool(line["translation"]), line)
-    if result["spoken_lines"]:
-        LATENCY["first_audio"].append(
-            fetch_audio(http, sid, hdr["X-Session-Token"], result["spoken_lines"][0]))
-    return result
+def charmer(http: httpx.Client) -> None:
+    p = Player(http, "charmer", persona="unhinged")
+    p.enter()
+    p.play([("type", "ni hao"), ("ask", "what is good here?"), ("verb", "point", "baijiu"),
+            ("ask", "I want that one"), ("ask", "cheers!"), ("verb", "drink", "baijiu"),
+            ("speak", "xiexie"), ("verb", "show", "photo"), ("ask", "she is my friend"),
+            ("ask", "where is she?"), ("ask", "please, I am worried about her"),
+            ("verb", "pay", "tab")])
+    T.check("charmer: act 1 done", p.complete, p.last.get("game"))
+    p.enter()
+    p.play([("type", "ni hao"), ("ask", "I want noodles"), ("ask", "a bit cheaper?"),
+            ("ask", "ok"), ("verb", "eat", "noodles"), ("ask", "it's delicious!"),
+            ("verb", "show", "photo"), ("ask", "have you seen my friend?"),
+            ("verb", "point", "scarf"), ("ask", "where is she?"), ("verb", "eat", "chili"),
+            ("ask", "where is my friend now?")])
+    p.wrap()
 
 
-def play_once(http: httpx.Client, keep_going: bool) -> bool:
-    before = len(T.failed)
-    r = http.post(f"{API}/api/sessions", json={"cartridge_id": CARTRIDGE_ID})
-    body = r.json()
-    sid, token = body["session_id"], body["token"]
-    hdr = {"X-Session-Token": token}
-    opening = http.post(f"{API}/api/sessions/{sid}/start", headers=hdr).json()
-    show(opening)
-    fetch_audio(http, sid, token, opening["spoken_lines"][0])
-
-    # Beat 1: recognition. The learner repeats the word; a second try if she needed more.
-    res = speak(http, sid, hdr, "kagi.wav")
-    if res["learning"]["active_beat"]["id"] == "ground_key":
-        res = speak(http, sid, hdr, "kagi.wav")
-    T.check("recognized → request_key", res["learning"]["active_beat"]["id"] == "request_key",
-            res["learning"]["active_beat"])
-
-    # Beat 2: a mixed-language, fragmentary request.
-    res = speak(http, sid, hdr, "key_kudasai.wav")
-    if res["world"]["holders"]["obj.engine_key"] != "player":
-        res = speak(http, sid, hdr, "kagi_o_kudasai.wav")
-    T.check("key given to player", res["world"]["holders"]["obj.engine_key"] == "player")
-    T.check("engine panel open", res["world"]["fixtures"]["fx.engine_panel"] == "open")
-    T.check("plate shows open panel", res["world"]["plate_url"].endswith("plate_panel_open.png"))
-    T.check("now on transfer_map", (res["learning"]["active_beat"] or {}).get("id") ==
-            "transfer_map", res["learning"]["active_beat"])
-    modeled = [ln for ln in res["spoken_lines"]
-               if ln["pattern_id"] and "object.map" in ln["concept_ids"]]
-    T.check("map request NOT modeled before the learner tries", not modeled, modeled)
-
-    # Refresh mid-episode restores everything.
-    ps = http.get(f"{API}/api/sessions/{sid}", headers=hdr).json()
-    T.check("refresh keeps world", ps["world"] == res["world"])
-    T.check("refresh keeps transcript", len(ps["transcript"]) >= 8, len(ps["transcript"]))
-
-    # Beat 3: transfer to a new slot without a completed sentence.
-    res = speak(http, sid, hdr, "chizu_please.wav")
-    if not res["episode_complete"]:
-        res = speak(http, sid, hdr, "chizu_o_kudasai.wav")
-    T.check("map given", res["world"]["holders"]["obj.route_map"] == "player")
-    T.check("airship launched", res["world"]["fixtures"]["fx.airship"] == "launched")
-    T.check("episode complete", res["episode_complete"] is True)
-    recap = http.get(f"{API}/api/sessions/{sid}/recap", headers=hdr).json()
-    print("\n   RECAP:", *recap["lines"], sep="\n     ")
-    stages = res["learning"]["concept_stage"]
-    T.check("key produced", stages["object.key"] in {"produced_with_cue",
-                                                     "produced_independently", "transferred"},
-            stages)
-    T.check("map transferred (or honestly downgraded)", stages["object.map"] in {
-        "transferred", "produced_with_cue"}, stages)
-    T.check("recap recognized both words", {c["concept_id"] for c in recap["recognized"]} >=
-            {"object.key", "object.map"}, recap["recognized"])
-    ok = len(T.failed) == before
-    print(f"\n== run {'PASSED' if ok else 'FAILED'} (session {sid})")
-    return ok or keep_going
+def tourist(http: httpx.Client) -> None:
+    p = Player(http, "tourist", difficulty="immersion", persona="brisk")
+    p.enter()
+    p.play([("type", "hello? do you speak English?"), ("verb", "point", "menu"),
+            ("speak", "wo_yao_pijiu"), ("verb", "drink", "beer"), ("verb", "point", "tea"),
+            ("ask", "I want tea"), ("verb", "show", "photo"), ("type", "Mei? Mei?"),
+            ("ask", "where is she?"), ("verb", "pay", "tab"), ("ask", "sorry, no money"),
+            ("ask", "she is my friend"), ("ask", "cheers"), ("verb", "drink", "baijiu"),
+            ("ask", "where is she?")])
+    if p.complete and not p.last.get("ending"):
+        p.enter()
+        p.play([("verb", "point", "scarf"), ("verb", "take", "scarf"), ("verb", "show", "photo"),
+                ("ask", "where is she?"), ("ask", "I have no money"), ("verb", "eat", "chili"),
+                ("ask", "water please"), ("ask", "where is my friend?"),
+                ("ask", "please, where?"), ("ask", "thank you")])
+    if not p.last.get("ending"):
+        p.http.post(p.url("finish"), headers=p.hdr)
+        p.last["ending"] = p.state()["ending"]
+        if p.last["ending"]:
+            ENDINGS[p.name] = p.last["ending"]["id"]
+            print(f"\n*** (gave up) {p.last['ending']['title'].upper()} ***\n"
+                  f"{p.last['ending']['text']}")
+    p.wrap()
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", type=int, default=1)
-    ap.add_argument("--keep-going", action="store_true")
-    args = ap.parse_args()
-    with httpx.Client(timeout=90) as http:
-        try:
-            health = http.get(f"{API}/api/health").json()
-        except httpx.HTTPError:
-            sys.exit(f"API not reachable at {API}; start it with: bash run.sh --quiet")
-        print("health:", health)
-        passes = 0
-        for i in range(args.runs):
-            print(f"\n================ run {i + 1}/{args.runs}")
-            before = len(T.failed)
-            if not play_once(http, args.keep_going):
-                break
-            passes += len(T.failed) == before
-    for k, v in LATENCY.items():
-        if v:
-            s = sorted(v)
-            print(f"latency {k}: median {s[len(s) // 2]:.2f}s max {s[-1]:.2f}s n={len(s)}")
-    print(f"golden path runs passed: {passes}/{args.runs}")
-    T.finish()
+PLAYERS = {"payer": payer, "charmer": charmer, "tourist": tourist}
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", default=",".join(PLAYERS))
+    args = parser.parse_args()
+    with httpx.Client(timeout=90) as http:
+        try:
+            health = http.get(f"{API}/api/health").json()
+        except httpx.HTTPError as exc:
+            sys.exit(f"API not reachable at {API}: {exc}")
+        print(f"API {API}: {health}")
+        for key in args.only.split(","):
+            T.run(key, lambda key=key: PLAYERS[key.strip()](http))
+    print(f"\nendings: {ENDINGS}")
+    for name, values in LATENCY.items():
+        if values:
+            print(f"{name:12s} n={len(values):3d} median {statistics.median(values):.2f}s "
+                  f"max {max(values):.2f}s")
+    if LATENCY["turn"]:
+        T.check("median turn latency <= 3.5 s", statistics.median(LATENCY["turn"]) <= 3.5)
+    T.finish()

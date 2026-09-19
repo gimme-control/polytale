@@ -1,0 +1,362 @@
+{
+  "id": "market",
+  "name": "Night Market",
+  "tagline": "She was here. Where is she now?",
+  "intro": "The night market is a river of smoke, neon and elbows. One stall has a queue, a woman conducting it with a ladle like an orchestra, and hanging from the awning pole, a red scarf you would know anywhere.",
+  "setting": "A street-food stall in a loud, crowded night market, seen from where the player stands at the front of the stall. The vendor works behind a steaming counter facing the player. Laid out at the back of the stall, in plain view: a bowl of noodles, a plate of dumplings, a jar of chili oil, a bottle of beer, a glass of water, and, hanging from the awning pole, a red scarf that is clearly not for sale. The player carries a polaroid of Mei and whatever cash they have left. That is everything here: no rice, no skewers, no tea, no menu, no card reader, no phone, no other staff. Things happen physically: food or drink that is ordered is set down on the counter, the chili jar is pushed across when someone wants it spicy, the scarf can be taken down and handed over, cash changes hands over the counter.",
+  "art": {
+    "background": "art/bg.webp",
+    "cover": "art/cover.webp",
+    "moods": {
+      "neutral": "art/bg.webp",
+      "pleased": "art/bg_pleased.webp",
+      "puzzled": "art/bg_puzzled.webp"
+    }
+  },
+  "npc": {
+    "id": "vendor",
+    "name": "Lin",
+    "names": {
+      "zh-CN": "林姐",
+      "ja-JP": "おかみさん"
+    },
+    "role": "street-food vendor",
+    "character": "Late forties, has cooked at this stall every night for fifteen years and can run it with her eyes shut. Loud, quick, funny, entirely unselfconscious; talks with her hands and a ladle. Speaks nothing but the local language and has never needed anything else: hungry people point, she feeds them. Proud of her food, pushy about it, and soft as butter underneath.",
+    "voice": {
+      "gemini_voice": "Gacrux",
+      "elevenlabs_voice_id": "",
+      "style": "A woman in her late forties running a night-market food stall: hearty, warm, direct, calling over the noise. Natural conversational speed, not a language lesson."
+    },
+    "anchor": {
+      "x": 0.617,
+      "y": 0.37
+    },
+    "wants": "To feed people and to win. Everybody who stands at her stall eats; gossip is for customers. She loves a haggle: she names the full price, acts wounded at a counter-offer, comes down a little for anyone with the nerve to push, and will not go under her floor (she says so with theatre). She dares every foreigner to take it spicy; nobody ever has, and she would adore whoever did (they will cry; she will be thrilled). She warms to people who eat with appetite and say it is good.",
+    "secrets": "Mei ate here an hour ago: dumplings, extra chili, crying a little and blaming the chili. She told Lin her friend never came and that she was taking the last train home: the station, platform 2. She forgot her red scarf; Lin hung it on the pole where Mei would see it if she came back. Lin will not give a girl's scarf, or where she went, to some random foreigner. They must prove they are the friend (the photo does it), AND earn it: take the spicy dare, or be a proper paying customer she has warmed to. Once she believes them she is all in: presses the scarf on them to carry to Mei, points the way to the station, shoos them off.",
+    "trust": 0
+  },
+  "zones": [
+    "display",
+    "counter",
+    "npc",
+    "inventory",
+    "gone"
+  ],
+  "objects": [
+    {
+      "id": "noodles",
+      "item_id": "noodles",
+      "art": "art/obj_noodles.png",
+      "zone": "display",
+      "price": 15,
+      "positions": {
+        "display": {
+          "x": 0.315,
+          "y": 0.603,
+          "h": 0.112
+        },
+        "counter": {
+          "x": 0.36,
+          "y": 0.815,
+          "h": 0.216
+        }
+      },
+      "price_floor": 10,
+      "actions": [
+        "point",
+        "eat"
+      ]
+    },
+    {
+      "id": "dumplings",
+      "item_id": "dumplings",
+      "art": "art/obj_dumplings.png",
+      "zone": "display",
+      "price": 12,
+      "positions": {
+        "display": {
+          "x": 0.415,
+          "y": 0.605,
+          "h": 0.087
+        },
+        "counter": {
+          "x": 0.585,
+          "y": 0.93,
+          "h": 0.186
+        }
+      },
+      "price_floor": 8,
+      "actions": [
+        "point",
+        "eat"
+      ]
+    },
+    {
+      "id": "chili",
+      "item_id": "spicy",
+      "art": "art/obj_chili.png",
+      "zone": "display",
+      "positions": {
+        "display": {
+          "x": 0.497,
+          "y": 0.607,
+          "h": 0.09
+        },
+        "counter": {
+          "x": 0.465,
+          "y": 0.85,
+          "h": 0.179
+        }
+      },
+      "actions": [
+        "point",
+        "take",
+        "eat"
+      ]
+    },
+    {
+      "id": "beer",
+      "item_id": "beer",
+      "art": "art/obj_beer.png",
+      "zone": "display",
+      "price": 10,
+      "positions": {
+        "display": {
+          "x": 0.755,
+          "y": 0.662,
+          "h": 0.15
+        },
+        "counter": {
+          "x": 0.8,
+          "y": 0.94,
+          "h": 0.33
+        }
+      },
+      "price_floor": 8,
+      "actions": [
+        "point",
+        "drink"
+      ]
+    },
+    {
+      "id": "water",
+      "item_id": "water",
+      "art": "art/obj_water.png",
+      "zone": "display",
+      "price": 3,
+      "positions": {
+        "display": {
+          "x": 0.797,
+          "y": 0.664,
+          "h": 0.099
+        },
+        "counter": {
+          "x": 0.885,
+          "y": 0.95,
+          "h": 0.224
+        }
+      },
+      "actions": [
+        "point",
+        "drink"
+      ]
+    },
+    {
+      "id": "scarf",
+      "item_id": "scarf",
+      "art": "art/obj_scarf.png",
+      "zone": "display",
+      "actions": [
+        "point",
+        "take"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.12,
+          "y": 0.42,
+          "h": 0.3
+        },
+        "counter": {
+          "x": 0.22,
+          "y": 0.93,
+          "h": 0.2
+        }
+      }
+    },
+    {
+      "id": "photo",
+      "item_id": "friend",
+      "art": "art/obj_photo.png",
+      "zone": "inventory",
+      "actions": [
+        "show",
+        "give"
+      ],
+      "positions": {
+        "counter": {
+          "x": 0.5,
+          "y": 0.95,
+          "h": 0.16
+        },
+        "npc": {
+          "x": 0.62,
+          "y": 0.72,
+          "h": 0.1
+        }
+      }
+    },
+    {
+      "id": "money",
+      "item_id": "money",
+      "art": "art/obj_money.png",
+      "zone": "inventory",
+      "positions": {
+        "counter": {
+          "x": 0.713,
+          "y": 0.958,
+          "h": 0.102
+        },
+        "npc": {
+          "x": 0.6,
+          "y": 0.8,
+          "h": 0.079
+        }
+      },
+      "actions": [
+        "pay"
+      ]
+    }
+  ],
+  "targets": [
+    "thanks",
+    "friend",
+    "where",
+    "want",
+    "how_much",
+    "money",
+    "beer",
+    "noodles",
+    "dumplings",
+    "spicy",
+    "scarf",
+    "too_expensive"
+  ],
+  "goals": [
+    {
+      "id": "seen",
+      "label": "Find someone who has seen Mei",
+      "when": {
+        "clue": "scarf"
+      }
+    },
+    {
+      "id": "find",
+      "label": "Find out where Mei is now",
+      "when": {
+        "clue": "platform"
+      }
+    }
+  ],
+  "travel_minutes": 9,
+  "support_words": [
+    "hello",
+    "water",
+    "this",
+    "yes",
+    "good",
+    "no_want",
+    "not_spicy",
+    "delicious",
+    "cheaper",
+    "photo",
+    "station",
+    "platform",
+    "train",
+    "number_two",
+    "she",
+    "seen",
+    "left",
+    "one_more",
+    "kuai",
+    "five",
+    "eight",
+    "ten",
+    "twelve",
+    "fifteen"
+  ],
+  "flags": [
+    {
+      "id": "scarf_noticed",
+      "when": "the player has pointed at, asked about or reached for the red scarf"
+    },
+    {
+      "id": "photo_shown_lin",
+      "when": "the player has shown or handed the vendor Mei's photo"
+    },
+    {
+      "id": "dare_taken",
+      "when": "the player has eaten food they bought here WITH the chili: they took the spicy dare (chili on nothing, or on unpaid food, does not count)",
+      "requires_paid": [
+        "noodles",
+        "dumplings"
+      ]
+    },
+    {
+      "id": "scarf_taken",
+      "when": "the vendor has given the player Mei's scarf to carry to her (the scarf is in the player's inventory)"
+    }
+  ],
+  "clues": [
+    {
+      "id": "scarf",
+      "title": "Mei's scarf",
+      "text": "The red scarf on the stall is Mei's. She ate here tonight, and left in a hurry.",
+      "gm_note": "She looks from the scarf to the player and back; if shown the photo she lights up: that girl, yes, an hour ago.",
+      "reveal_when": [
+        {
+          "flags": [
+            "scarf_noticed"
+          ]
+        },
+        {
+          "flags": [
+            "photo_shown_lin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "platform",
+      "title": "Platform 2",
+      "text": "Mei is taking the last train home. The station, platform 2. Run.",
+      "gm_note": "She says it big: station, train, number two, points down the street with the ladle, presses the scarf on them and shoos them off. This ends the act.",
+      "reveal_when": [
+        {
+          "flags": [
+            "photo_shown_lin",
+            "dare_taken"
+          ]
+        },
+        {
+          "flags": [
+            "photo_shown_lin"
+          ],
+          "trust_at_least": 2
+        },
+        {
+          "flags": [
+            "photo_shown_lin"
+          ],
+          "paid_at_least": 10,
+          "trust_at_least": 1
+        }
+      ],
+      "key_items": [
+        "platform",
+        "station",
+        "number_two",
+        "train"
+      ]
+    }
+  ]
+}

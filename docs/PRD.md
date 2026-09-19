@@ -1,4 +1,4 @@
-# Scenario-Based Language Learning Game — Product Requirements
+# Polytale — Scenario-Based Language Learning Game · Product Requirements
 
 Version 0.3 · September 19, 2026 · VTHacks 14
 

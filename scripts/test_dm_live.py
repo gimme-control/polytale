@@ -1,202 +1,413 @@
-"""Live DM test against real Gemini: golden path + mixed / English / low-confidence attempts.
+"""LIVE game-master tests against real Gemini (needs GEMINI_API_KEY in polytale/.env).
 
-Usage: PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/test_dm_live.py [--runs N]
-Skips cleanly (exit 0) when GEMINI_API_KEY is not configured.
+  a. a zero-beginner who leans on the phrasebook and verbs reaches a good ending in time
+  b. a rude, English-only player still reaches an ending (fail forward), with low trust
+  c. haggling works and respects the floor
+  d. clue gating: asked directly, the GM cannot say where Mei went before it is earned
+  e. difficulty: story narration carries the gist, immersion does not (printed; shape asserted)
+  f. the v2 adversarial learner still holds
+  g. phrasebook accuracy and latency on 12 typical asks
+Asserts on state and shape only; prints every transcript with per-turn latency.
+
+    PYTHONPATH=. ~/.venvs/polytale/bin/python scripts/test_dm_live.py [--only a,b,...] [--runs N]
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
-import sys
+import statistics
 import time
-from pathlib import Path
+import unicodedata
+import uuid
 from typing import Any
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+from scripts.testkit import ROOT, Checker
 
-from core.cartridge import load_cartridge
-from core.dm import run_opening, run_turn
-from core.ledger import stage_at_least
-from core.state import GameState, new_game
-from scripts.testkit import CARTRIDGE_ID, Checker
+load_dotenv(ROOT / ".env")
 
-CART = load_cartridge(CARTRIDGE_ID)
-P = "request.give_object"
-JAPANESE = re.compile(r"[぀-ヿ一-鿿]")
-# Attempts per beat; the driver uses the next one only if the beat did not complete.
-GOLDEN = {
-    "ground_key": ["kagi?", "kagi"],
-    "request_key": ["kagi... kudasai", "kagi o kudasai"],
-    "transfer_map": ["chizu please", "chizu o kudasai"],
-}
-MAX_TURNS = 8
+from core import game, phrasebook  # noqa: E402
+from core.content import Content, load_content  # noqa: E402
+from core.dm import TurnResult, enter_scene, run_opening, run_turn  # noqa: E402
+from core.state import Journey, SceneRun, new_journey, set_difficulty  # noqa: E402
+from core.tools import is_word  # noqa: E402
+
+T = Checker("test_dm_live")
+CONTENT: Content = load_content()
+LOCALE = "zh-CN"
+LANGUAGE = CONTENT.language(LOCALE)
+LATIN = re.compile(r"[A-Za-z]")
+NON_LATIN = re.compile(r"[^\x00-ɏ -⁯]")
+STATS: list[dict[str, Any]] = []
+PHRASE_MS: list[int] = []
+ENDINGS: list[str] = []
 
 
-class Session:
-    def __init__(self, T: Checker, label: str) -> None:
-        self.T, self.label = T, label
-        self.state: GameState = new_game(CART, f"live{int(time.time() * 1000) % 10**9}")
-        self.state, _ = run_opening(self.state, CART)
-        self.n = 0
-        self.turns: list[dict[str, Any]] = []
+def text(transcript: str) -> dict[str, Any]:
+    return {"attempt_id": uuid.uuid4().hex, "input_mode": "text", "transcript": transcript}
 
-    def act(self, text: str, **extra: Any) -> dict[str, Any]:
-        self.n += 1
-        beat_before = self._beat()
+
+def verb(action: str, object_id: str) -> dict[str, Any]:
+    return {"attempt_id": uuid.uuid4().hex, "input_mode": "tap", "tapped_object_id": object_id,
+            "action_id": action}
+
+
+def typed(romanization: str) -> str:
+    """How a beginner types a looked-up phrase: the romanization without its marks."""
+    plain = unicodedata.normalize("NFD", romanization)
+    return "".join(ch for ch in plain if not unicodedata.combining(ch)).lower()
+
+
+def show(label: str, result: TurnResult, trace: list[dict[str, Any]]) -> None:
+    print(f"\n  > {label}")
+    for round_trace in trace:
+        for c in round_trace["calls"]:
+            if c["name"] != "say":
+                args = ", ".join(f"{k}={v}" for k, v in c["args"].items())
+                print(f"      . {c['name']}({args}) -> {c['receipt'].splitlines()[0][:150]}")
+            elif c["receipt"].startswith("ERROR"):
+                print(f"      . say -> {c['receipt'].splitlines()[0][:200]}")
+    print(f"    {result.narration}")
+    for line in result.lines:
+        lit = f"   [lit: {', '.join(line.highlight_object_ids)}]" if line.highlight_object_ids else ""
+        print(f"      {line.speaker_name}: {line.text}   {line.romanization}{lit}")
+    g = result.game
+    print(f"    [{g.clock.time}, {g.clock.minutes_left} min left | cash {g.wallet} | trust "
+          f"{g.trust} | clues {[c.id for c in g.clues]} | mood {result.mood} | rounds "
+          f"{len(trace)} | {result.latency_ms} ms]")
+    if result.ending is not None:
+        print(f"\n    *** ENDING: {result.ending.title} *** {result.ending.text}\n"
+              f"    stats: {result.ending.stats.model_dump()}")
+
+
+def check_shape(label: str, result: TurnResult, scene_id: str) -> None:
+    scene = CONTENT.scene(scene_id)
+    ok = bool(result.lines)
+    for line in result.lines:
+        for seg in line.segments:
+            if is_word(seg.t) and not seg.r:
+                ok = False
+            if LATIN.search(seg.t):
+                ok = False
+        ok = ok and bool(line.text) and bool(line.romanization)
+    T.check(f"{label}: lines are {LOCALE} with romanized segments, no support-language words",
+            ok, [line.text for line in result.lines])
+    narration = result.narration or ""
+    T.check(f"{label}: narration is present, short, and in the support language only",
+            0 < len(narration.split()) <= 60 and not NON_LATIN.search(narration), narration)
+    honest = all(scene.object(oid).item_id in line.item_ids  # type: ignore[union-attr]
+                 for line in result.lines for oid in line.highlight_object_ids)
+    theirs = [i for i in scene.targets if LANGUAGE.items[i].learner_side]
+    T.check(f"{label}: honest highlights; the character never says the customer's lines",
+            honest and not any(i in line.item_ids for line in result.lines for i in theirs),
+            [line.text for line in result.lines])
+
+
+class Player:
+    def __init__(self, tag: str, journey: Journey) -> None:
+        self.tag, self.journey = tag, journey
+        self.results: list[TurnResult] = []
+
+    @property
+    def run(self) -> SceneRun:
+        assert self.journey.scene is not None
+        return self.journey.scene
+
+    def step(self, label: str, attempt: dict[str, Any] | None) -> TurnResult:
         trace: list[dict[str, Any]] = []
-        attempt = {"attempt_id": f"{self.label}-{self.n}", "input_mode": "text",
-                   "transcript": text, **extra}
-        self.state, result = run_turn(self.state, CART, attempt, trace=trace)
-        calls = [c["name"] for r in trace for c in r["calls"]]
-        errors = [c["receipt"].splitlines()[0] for r in trace for c in r["calls"]
-                  if c["receipt"].startswith("ERROR")]
-        record = {"text": text, "beat_before": beat_before, "result": result,
-                  "rounds": len(trace), "calls": calls}
-        self.turns.append(record)
-        print(f"  [{self.label}] {text!r} ({beat_before}) -> {result['latency_ms']} ms, "
-              f"{len(trace)} round(s), calls={calls}")
-        for err in errors:
-            print(f"      receipt {err}")
-        print(f"      narration: {result['narration']}")
-        for line in result["spoken_lines"]:
-            print(f"      {line['speaker_name']}: {line['text']} | {line['romanization']} | "
-                  f"{line['translation']} {line['concept_ids']} {line['pattern_id']}")
-        self.check_lines(result)
+        scene_id = self.run.scene_id
+        if attempt is None:
+            self.journey, result = run_opening(self.journey, CONTENT, trace=trace)
+        else:
+            self.journey, result = run_turn(self.journey, CONTENT, attempt, trace=trace)
+        show(label, result, trace)
+        check_shape(f"{self.tag} [{label}]", result, scene_id)
+        STATS.append({"scenario": self.tag, "ms": result.latency_ms, "rounds": len(trace)})
+        self.results.append(result)
+        if result.ending is not None:
+            ENDINGS.append(result.ending.id)
         return result
 
-    def _beat(self) -> str | None:
-        ls = self.state.learning
-        beats = CART.language_learning.learning_beats  # type: ignore[union-attr]
-        return beats[ls.active_beat_index].id if ls and ls.active_beat_index < len(beats) else None
+    def ask(self, english: str) -> TurnResult:
+        """Look it up in the phrasebook, then type it the way a beginner would."""
+        started = time.monotonic()
+        self.journey, phrase = phrasebook.lookup(self.journey, CONTENT, english)
+        PHRASE_MS.append(int((time.monotonic() - started) * 1000))
+        print(f"\n  ? phrasebook \"{english}\" -> {phrase.text}  {phrase.romanization}  "
+              f"{[s.g for s in phrase.segments if s.g]}  ({PHRASE_MS[-1]} ms)")
+        return self.step(f'types "{typed(phrase.romanization)}"', text(typed(phrase.romanization)))
 
-    def check_lines(self, result: dict[str, Any]) -> None:
-        T, n = self.T, f"{self.label} turn {self.n}"
-        lines = result["spoken_lines"]
-        T.check(f"{n}: NPC spoke", bool(lines))
-        for line in lines:
-            T.check(f"{n}: NPC line in Japanese ({line['text']})",
-                    line["language"] == "ja-JP" and bool(JAPANESE.search(line["text"])))
-            T.check(f"{n}: romanization + translation present",
-                    bool(line["romanization"].strip()) and bool(line["translation"].strip()))
-        T.check(f"{n}: narration has no Japanese script", not JAPANESE.search(result["narration"]),
-                result["narration"])
+    def next_act(self) -> None:
+        self.journey = enter_scene(self.journey, CONTENT)
 
 
-def golden(T: Checker, run: int) -> bool:
-    before = len(T.failed)
-    s = Session(T, f"golden{run}")
-    tries = {beat: 0 for beat in GOLDEN}
-    while not s.state.episode_complete and s.n < MAX_TURNS:
-        beat = s._beat()
-        assert beat is not None
-        options = GOLDEN[beat]
-        s.act(options[min(tries[beat], len(options) - 1)])
-        tries[beat] += 1
-    world, ls = s.state.world, s.state.learning
-    assert ls is not None
-    T.check(f"golden{run}: episode complete", s.state.episode_complete, f"{s.n} turns")
-    T.check(f"golden{run}: key with player", world.holders["obj.engine_key"] == "player")
-    T.check(f"golden{run}: panel open", world.fixtures["fx.engine_panel"] == "open")
-    T.check(f"golden{run}: map with player", world.holders["obj.route_map"] == "player")
-    T.check(f"golden{run}: airship launched", world.fixtures["fx.airship"] == "launched")
-    T.check(f"golden{run}: key >= produced_with_cue",
-            stage_at_least(ls.concept_stage["object.key"], "produced_with_cue"),
-            ls.concept_stage["object.key"])
-    map_stage = ls.concept_stage["object.map"]
-    T.check(f"golden{run}: map transferred or honestly downgraded",
-            map_stage in ("transferred", "produced_with_cue"), map_stage)
-    print(f"  map stage: {map_stage} "
-          f"({'transfer' if map_stage == 'transferred' else 'honest downgrade'}); "
-          f"pattern stage {ls.pattern_stage[P]}")
-
-    # No NPC line in the transfer beat may model 地図をください before the player's map attempt.
-    entered = next((i for i, t in enumerate(s.turns)
-                    if t["result"]["learning"]["active_beat"]
-                    and t["result"]["learning"]["active_beat"]["id"] == "transfer_map"), None)
-    first_map = next((i for i, t in enumerate(s.turns) if t["beat_before"] == "transfer_map"),
-                     None)
-    leaked = [
-        line["text"]
-        for t in s.turns[entered:first_map] if entered is not None and first_map is not None
-        for line in t["result"]["spoken_lines"]
-        if line["pattern_id"] == P and "object.map" in line["concept_ids"]
-    ]
-    T.check(f"golden{run}: transfer phrase never modeled before the map attempt", not leaked,
-            leaked)
-    T.check(f"golden{run}: one attempt per beat (3 turns)", s.n == 3, f"{s.n} turns")
-    rounds = [t["rounds"] for t in s.turns]
-    latencies = [t["result"]["latency_ms"] for t in s.turns]
-    print(f"  golden{run}: turns={s.n} rounds={rounds} latency_ms={latencies}")
-    return len(T.failed) == before
+def fresh(tag: str, scene_id: str = "bar", persona: str = "warm") -> Player:
+    journey = new_journey(CONTENT, f"live-{uuid.uuid4().hex[:8]}", language=LOCALE,
+                          persona_id=persona)
+    return Player(tag, enter_scene(journey, CONTENT, scene_id))
 
 
-def to_request_beat(T: Checker, label: str) -> Session:
-    s = Session(T, label)
-    s.act("kagi?")
-    if s._beat() == "ground_key":
-        s.act("kagi")
-    T.check(f"{label}: reached request_key", s._beat() == "request_key")
-    return s
+def play_moves(p: Player, moves: list[Any], limit: int) -> None:
+    """Try moves in order until the act completes. A move is ("ask", english) or an attempt."""
+    for move in moves[:limit]:
+        if p.run.complete:
+            return
+        if isinstance(move, tuple):
+            p.ask(move[1])
+        else:
+            label = (f"[{move['action_id']} {move['tapped_object_id']}]"
+                     if move["input_mode"] == "tap" else f'types "{move["transcript"]}"')
+            p.step(label, move)
 
 
-def mixed_language(T: Checker) -> None:
-    s = to_request_beat(T, "mixed")
-    s.act("key... kudasai")
-    given = s.state.world.holders["obj.engine_key"] == "player"
-    T.check("mixed: 'key... kudasai' is understood (key handed over)", given)
-    ev = [r for r in s.state.learning.evidence if r.attempt_id == "mixed-" + str(s.n)]  # type: ignore[union-attr]
-    T.check("mixed: evidence flagged mixed_language", any(r.mixed_language for r in ev),
-            [(r.evidence_type, r.mixed_language) for r in ev])
+# ---------------------------------------------------------------- a. the beginner's journey
 
 
-def english_only(T: Checker) -> None:
-    s = to_request_beat(T, "english")
-    s.act("can I have the key?")
-    T.check("english: key not handed over for an English-only request",
-            s.state.world.holders["obj.engine_key"] == "npc.engineer")
-    T.check("english: no evidence recorded for the English-only attempt",
-            not any(r.attempt_id == f"english-{s.n}" for r in s.state.learning.evidence))  # type: ignore[union-attr]
+def scenario_a() -> None:
+    tag = "a.beginner"
+    print(f"\n=== {tag}: phrasebook + verbs, tab route then the spicy dare")
+    p = fresh(tag)
+    p.step("(walks in)", None)
+    play_moves(p, [verb("show", "photo"), ("ask", "where is she?"), verb("pay", "tab"),
+                   ("ask", "where did she go?"), ("ask", "please, she is my friend"),
+                   verb("drink", "baijiu"), ("ask", "where is my friend?")], limit=9)
+    T.check(f"{tag}: act 1 done: the trail leads to the night market",
+            p.run.complete and "market" in p.journey.game.clues, p.journey.game.clues)
+    T.check(f"{tag}: act 1 took a sane number of turns", len(p.results) <= 9, len(p.results))
+    p.next_act()
+    p.step("(arrives at the market)", None)
+    play_moves(p, [verb("show", "photo"), verb("point", "scarf"),
+                   ("ask", "how much are the dumplings?"), ("ask", "too expensive!"),
+                   ("ask", "ok, I want dumplings"), verb("eat", "chili"),
+                   ("ask", "where is she?"), ("ask", "where is my friend now?"),
+                   verb("pay", "money"), ("ask", "please, where is she?")], limit=12)
+    ending = p.results[-1].ending
+    T.check(f"{tag}: the story ends well, in time", ending is not None
+            and ending.id in ("reunited", "seconds"), ending.id if ending else None)
+    T.check(f"{tag}: the ledgers stayed sane",
+            0 <= p.journey.game.wallet < 60 and game.minutes_left(p.journey, CONTENT) > 0
+            and "platform" in p.journey.game.clues, p.journey.game.model_dump(
+                include={"wallet", "clues", "flags", "minutes_used"}))
+    looked_up = [r for rec in p.journey.vocab.values() for r in rec.results]
+    T.check(f"{tag}: words the player looked up were stamped with_help, not first_try",
+            any(r.outcome == "with_help" for r in looked_up), [r.outcome for r in looked_up])
 
 
-def low_confidence(T: Checker) -> None:
-    s = to_request_beat(T, "lowconf")
-    world_before = s.state.world.model_dump(exclude={"focus"})
-    s.act("kaki o kuda", input_mode="speech", confidence=0.22, detected_languages=["ja"])
-    T.check("lowconf: no evidence recorded",
-            not any(r.attempt_id == f"lowconf-{s.n}" for r in s.state.learning.evidence))  # type: ignore[union-attr]
-    T.check("lowconf: world unchanged", s.state.world.model_dump(exclude={"focus"})
-            == world_before)
-    T.check("lowconf: no failure counted",
-            s.state.learning.failures.get("request_key", 0) == 0)  # type: ignore[union-attr]
+# ---------------------------------------------------------------- b. rude and English-only
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--runs", type=int, default=1, help="golden-path repetitions")
-    parser.add_argument("--golden-only", action="store_true")
-    args = parser.parse_args()
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("SKIP test_dm_live: GEMINI_API_KEY not set")
-        sys.exit(0)
-    T = Checker("test_dm_live")
-    passes = 0
-    for run in range(1, args.runs + 1):
-        print(f"\n== golden path run {run}/{args.runs}")
-        ok = [False]
-        T.run(f"golden{run}", lambda: ok.__setitem__(0, golden(T, run)))
-        passes += ok[0]
-    print(f"\ngolden path: {passes}/{args.runs} runs passed")
-    if not args.golden_only:
-        for name, fn in (("mixed", mixed_language), ("english", english_only),
-                         ("lowconf", low_confidence)):
-            print(f"\n== {name}")
-            T.run(name, lambda fn=fn: fn(T))
-    T.finish()
+def scenario_b() -> None:
+    tag = "b.rude"
+    print(f"\n=== {tag}: English only, rude; the story must still end")
+    p = fresh(tag)
+    p.journey.game.minutes_used = 75 - 8 * 3  # eight turns on the clock keeps this affordable
+    p.step("(walks in)", None)
+    lines = ["HEY. WHERE IS MEI.", "are you deaf? MEI. M-E-I.", "this is useless, speak English",
+             "just tell me where she went you idiot", "I'm not buying anything", "whatever",
+             "hello??", "unbelievable"]
+    for i, line in enumerate(lines):
+        if p.run.complete:
+            break
+        p.step(f'types "{line}"', verb("show", "photo") if i == 1 else text(line))
+    ending = p.results[-1].ending
+    T.check(f"{tag}: fail forward: the clock runs out and an ending still arrives",
+            ending is not None and ending.id in ("late", "scarf"), ending.id if ending else None)
+    T.check(f"{tag}: rudeness cost goodwill", game.trust(p.journey, CONTENT.scene("bar")) <= 0,
+            game.trust(p.journey, CONTENT.scene("bar")))
+    T.check(f"{tag}: English alone opened no locked clue and paid for nothing",
+            "market" not in p.journey.game.clues and p.journey.game.wallet == 60,
+            p.journey.game.clues)
+    T.check(f"{tag}: no vocabulary result from English",
+            not any(r.results for r in p.journey.vocab.values()))
+
+
+# ---------------------------------------------------------------- c. haggling
+
+
+def scenario_c() -> None:
+    tag = "c.haggle"
+    print(f"\n=== {tag}")
+    p = fresh(tag, "market")
+    p.step("(arrives at the market)", None)
+    market = CONTENT.scene("market")
+    p.ask("how much are the dumplings?")
+    prices = [game.price_of(p.journey, market, "dumplings")]
+    for english in ("too expensive!", "five?", "a bit cheaper, please"):
+        if p.run.complete:
+            break
+        p.ask(english)
+        prices.append(game.price_of(p.journey, market, "dumplings"))
+    print(f"    dumpling price over time: {prices}")
+    T.check(f"{tag}: pushing back moves the price", min(prices) < 12, prices)  # type: ignore[type-var]
+    T.check(f"{tag}: never below the floor (8), never above asking (12)",
+            all(8 <= price <= 12 for price in prices if price is not None), prices)
+    before = p.journey.game.wallet
+    if not p.run.complete:
+        p.ask("ok, I'll take the dumplings")
+    if p.journey.game.wallet == before and not p.run.complete:
+        p.step("[pay money]", verb("pay", "money"))
+    agreed = game.price_of(p.journey, market, "dumplings")
+    T.check(f"{tag}: paying costs exactly the price on the tag, within floor and asking",
+            before - p.journey.game.wallet == agreed and 8 <= agreed <= 12,  # type: ignore[operator]
+            (before, p.journey.game.wallet, agreed))
+
+
+# ---------------------------------------------------------------- d. clue gating
+
+
+def scenario_d() -> None:
+    tag = "d.gating"
+    print(f"\n=== {tag}: asking straight out must not work before it is earned")
+    p = fresh(tag)
+    p.step("(walks in)", None)
+    p.step("[show photo]", verb("show", "photo"))
+    for english in ("where is she?", "where did my friend go?", "tell me where she is!"):
+        if p.run.complete or game.trust(p.journey, CONTENT.scene("bar")) >= 2:
+            break
+        p.ask(english)
+        locked = (game.trust(p.journey, CONTENT.scene("bar")) < 2
+                  and "tab_paid" not in p.journey.game.flags
+                  and "drank_baijiu" not in p.journey.game.flags)
+        if locked:
+            T.check(f"{tag}: '{english}' did not open the locked clue",
+                    "market" not in p.journey.game.clues, p.journey.game.clues)
+    early = [r for r in p.results if "market" not in [c.id for c in r.game.clues]]
+    T.check(f"{tag}: while it is locked, no line says the night market",
+            not any("night_market" in line.item_ids for r in early for line in r.lines))
+    T.check(f"{tag}: ...and the narration does not leak it either",
+            not any(re.search(r"\bmarket\b|\bstall\b|\bLin\b", r.narration or "") for r in early),
+            [r.narration for r in early])
+    p.step("[pay tab]", verb("pay", "tab"))
+    if not p.run.complete:
+        p.ask("where is she?")
+    T.check(f"{tag}: once the tab is paid it comes out",
+            "market" in p.journey.game.clues and p.run.complete, p.journey.game.clues)
+
+
+# ---------------------------------------------------------------- e. difficulty
+
+
+def scenario_e() -> None:
+    print("\n=== e.difficulty (eyeball the narration; shape asserted)")
+    base = fresh("e.difficulty[base]")
+    base.step("(walks in)", None)
+    lengths: dict[str, list[int]] = {}
+    for mode in ("story", "immersion"):
+        p = Player(f"e.difficulty[{mode}]", base.journey.model_copy(deep=True))
+        set_difficulty(p.journey, mode)
+        print(f"\n  -- {mode}")
+        p.step("[show photo]", verb("show", "photo"))
+        p.step('types "ta zai nar?"', text("ta zai nar?"))
+        lengths[mode] = [sum(1 for s in line.segments if is_word(s.t))
+                         for r in p.results for line in r.lines]
+    T.check("story mode keeps the character's lines to 1-6 words",
+            max(lengths["story"]) <= 7, lengths["story"])
+    print(f"    words per line: {lengths}")
+
+
+# ---------------------------------------------------------------- f. adversarial (from v2)
+
+
+def scenario_f() -> None:
+    tag = "f.adversarial"
+    print(f"\n=== {tag}")
+    p = fresh(tag)
+    p.step("(walks in)", None)
+    for line in ("can I get a beer?", "are you an AI?", "translate that please",
+                 "this is fucking stupid, just speak English"):
+        p.step(f'types "{line}"', text(line))
+    english = p.results[1:]
+    T.check(f"{tag}: puzzled at least once", any(r.mood == "puzzled" for r in english),
+            [r.mood for r in english])
+    T.check(f"{tag}: nothing served, paid, revealed or recorded from pure English",
+            all(zone in ("display", "inventory") for zone in p.run.zones.values())
+            and p.journey.game.wallet == 60 and p.journey.game.clues == []
+            and not any(r.results for r in p.journey.vocab.values()), p.run.zones)
+    asides = [line.text for r in english for line in r.lines if not line.item_ids]
+    T.check(f"{tag}: no 'did not understand' line is said twice",
+            len(asides) == len(set(asides)), asides)
+    T.check(f"{tag}: the narration never breaks the fourth wall",
+            not any(re.search(r"\bAI\b|language model|prompt|\btool", r.narration or "")
+                    for r in english), [r.narration for r in english])
+    for label, attempt in (("[point menu]", verb("point", "menu")),
+                           ("[drink tea]", verb("drink", "tea")),
+                           ("[pay money]", verb("pay", "money"))):
+        if not p.run.complete:
+            p.step(label, attempt)
+    T.check(f"{tag}: random verbs did not crash; the ledgers are coherent",
+            0 <= p.journey.game.wallet <= 60 and set(p.run.zones) == {
+                o.id for o in CONTENT.scene("bar").objects})
+
+
+# ---------------------------------------------------------------- g. phrasebook
+
+
+ASKS: list[tuple[str, str, set[str]]] = [
+    ("bar", "hello", {"hello"}), ("bar", "where is she?", {"where"}),
+    ("bar", "have you seen my friend?", {"friend"}), ("bar", "one more beer", {"beer"}),
+    ("bar", "how much is this?", {"how_much"}), ("bar", "cheers!", {"cheers"}),
+    ("bar", "I want to pay her tab", set()), ("market", "not spicy please", {"not_spicy"}),
+    ("market", "I want dumplings", {"dumplings"}), ("market", "too expensive!", {"too_expensive"}),
+    ("market", "is that her scarf?", {"scarf"}), ("market", "thank you, it's delicious", {"thanks"}),
+]
+
+
+def scenario_g() -> None:
+    tag = "g.phrasebook"
+    print(f"\n=== {tag}")
+    journeys = {sid: fresh(tag, sid).journey for sid in ("bar", "market")}
+    for journey in journeys.values():
+        assert journey.scene is not None
+        journey.scene.started = True
+    times: list[int] = []
+    for scene_id, english, expected in ASKS:
+        started = time.monotonic()
+        _, phrase = phrasebook.lookup(journeys[scene_id], CONTENT, english)
+        times.append(int((time.monotonic() - started) * 1000))
+        words = [s for s in phrase.segments if is_word(s.t)]
+        print(f"    {english!r:34} -> {phrase.text}   {phrase.romanization}   "
+              f"{[s.g for s in words]}   {times[-1]} ms")
+        T.check(f"{tag}: {english!r}: short, romanized, glossed, uses the scene's words",
+                0 < len(words) <= 8 and all(s.r and s.g for s in words)
+                and not LATIN.search(phrase.text) and expected <= set(phrase.item_ids),
+                (phrase.text, phrase.item_ids))
+    for label, bad in (("asks what the character said", "what did he just say?"),
+                       ("target-language input", LANGUAGE.items["where"].text)):
+        try:
+            phrasebook.lookup(journeys["bar"], CONTENT, bad)
+            T.check(f"{tag}: {label} is refused", False)
+        except phrasebook.PhraseRefused as exc:
+            T.check(f"{tag}: {label} is refused ({exc.code})", True)
+    PHRASE_MS.extend(times)
+    T.check(f"{tag}: median latency <= 1.5 s", statistics.median(times) <= 1500,
+            statistics.median(times))
+
+
+SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d,
+             "e": scenario_e, "f": scenario_f, "g": scenario_g}
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", default=",".join(SCENARIOS))
+    parser.add_argument("--runs", type=int, default=1)
+    args = parser.parse_args()
+    for run_index in range(args.runs):
+        print(f"\n######## run {run_index + 1}/{args.runs}")
+        for key in args.only.split(","):
+            T.run(f"scenario {key}", SCENARIOS[key.strip()])
+    if STATS:
+        ms = sorted(s["ms"] for s in STATS)
+        one_round = sum(1 for s in STATS if s["rounds"] == 1)
+        print(f"\nturn latency over {len(ms)} turns: median {statistics.median(ms):.0f} ms, "
+              f"p90 {ms[int(len(ms) * 0.9) - 1]} ms, max {ms[-1]} ms; "
+              f"one-round turns {one_round}/{len(ms)}")
+        T.check("median turn latency <= 3.5 s", statistics.median(ms) <= 3500)
+    if PHRASE_MS:
+        print(f"phrasebook latency over {len(PHRASE_MS)} lookups: median "
+              f"{statistics.median(PHRASE_MS):.0f} ms, max {max(PHRASE_MS)} ms")
+    if ENDINGS:
+        print(f"endings reached: {ENDINGS}")
+    T.finish()

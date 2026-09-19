@@ -1,104 +1,154 @@
-// Game store: session, transcript, world, learning, mic state machine (PRD §20).
+// Game store: journey, scene state, subtitle reveal, and the input state machine.
 
 import { create } from "zustand";
 import { api, ApiError } from "./lib/api";
-import { clearSession, loadSession, saveSession } from "./lib/session";
+import { clearJourney, loadJourney, saveJourney } from "./lib/session";
 import type {
   ActBody,
-  CartridgeView,
-  EvidenceEntry,
-  HelpCue,
-  LearningView,
-  PlayerEntry,
+  Catalog,
+  Clue,
+  Difficulty,
+  Ending,
+  Entry,
+  GameView,
+  Help,
+  JourneyScene,
+  Language,
+  LearnerEntry,
+  Line,
+  Persona,
+  Phrase,
+  Progress,
   PublicState,
-  Recap,
-  SpokenLine,
-  TranscriptEntry,
+  SceneCard,
+  SceneView,
+  Story,
+  Summary,
   Transcription,
   TurnResult,
-  World,
 } from "./lib/types";
 import { mic } from "./audio/recorder";
-import { linePlayer } from "./audio/linePlayer";
+import { linePlayer, type QueueItem } from "./audio/linePlayer";
 
-export const DEFAULT_CARTRIDGE = "broken-airship-ja";
 export const MIN_RECORDING_MS = 250;
 export const AUTO_SUBMIT_MS = 1200;
-export const SLOW_RATE = 0.7;
+export const SLOW_RATE = 0.75;
+const SUMMARY_DELAY_MS = 1400;
+const INTRO_MIN_MS = 2400;
+const CLUE_TOAST_MS = 5200;
 
-export type Screen = "boot" | "start" | "play";
-export type MicPhase =
-  | "idle"
-  | "listening"
-  | "transcribing"
-  | "preview"
-  | "empty"
-  | "waiting"
-  | "error";
+/** The narrator is read first; the character speaks once there has been time to read. */
+function readingMs(text: string | null | undefined): number {
+  if (!text) return 0;
+  return Math.min(2600, 500 + text.split(/\s+/).length * 95);
+}
 
-export interface Flight {
-  id: number;
-  objectId: string;
-  to: "player" | "npc";
+export type Screen = "boot" | "start" | "intro" | "play" | "summary";
+export type InputPhase = "idle" | "listening" | "transcribing" | "preview" | "waiting" | "error";
+
+interface IntroCard {
+  scene: SceneCard | null;
+  error: string | null;
+  body: { scene_id?: string; restart?: boolean };
 }
 
 interface GameState {
   screen: Screen;
-  bootError: string | null;
+  catalog: Catalog | null;
+  startError: string | null;
   starting: boolean;
-  cartridgeId: string;
-  cartridge: CartridgeView | null;
-  sid: string | null;
+  chosenPersona: string | null;
+
+  journeyId: string | null;
   token: string | null;
+  language: Language | null;
+  personas: Persona[];
+  personaId: string | null;
+  scene: SceneView | null;
+  scenes: JourneyScene[];
+  transcript: Entry[];
+  zones: Record<string, string>;
+  mood: string;
+  progress: Progress | null;
+  sceneComplete: boolean;
+  summary: Summary | null;
+  intro: IntroCard | null;
+  story: Story | null;
+  game: GameView | null;
+  ending: Ending | null;
+  chosenDifficulty: Difficulty;
 
-  transcript: TranscriptEntry[];
-  world: World | null;
-  learning: LearningView | null;
-  episodeComplete: boolean;
-  recap: Recap | null;
-  helpCue: HelpCue | null;
+  /** notebook: how many clues the learner has already looked at, and the newest arrival */
+  cluesSeen: number;
+  clueToast: Clue | null;
+
+  /** "How do I say...?" */
+  phrasebook: Phrase[];
+  phraseOpen: boolean;
+  phraseBusy: boolean;
+  phraseError: string | null;
+  phraseResult: Phrase | null;
+  /** text handed to the input bar by "Use it" */
+  draft: { text: string; nonce: number };
+
+  /** npc lines of the current exchange not yet shown (they appear as they play) */
+  hidden: Record<string, true>;
+  speakingLineId: string | null;
+  speakingRate: number;
+  /** the narrator has the floor: the character's lines are about to start */
+  narrating: boolean;
+  /** a clip is sounding right now (speaking can also mean "line shown, audio loading") */
+  audible: boolean;
+  help: Help | null;
   helpBusy: boolean;
+  helpGlow: boolean;
 
-  mic: MicPhase;
+  phase: InputPhase;
   micDenied: boolean;
   preview: Transcription | null;
   previewDeadline: number | null;
-  pending: PlayerEntry | null;
+  pending: LearnerEntry | null;
+  learnerShownAt: number;
   notice: string | null;
   failedAct: ActBody | null;
-  keyboard: boolean;
-
-  speakingLineId: string | null;
-  speakingRate: number;
-
-  flights: Flight[];
-  fixtureFlash: Record<string, number>;
-  launchAt: number | null;
-  focusPulseAt: number;
-  showEnd: boolean;
-  lastActivity: number;
+  toast: string | null;
 
   boot(): Promise<void>;
+  choosePersona(id: string): void;
   begin(): Promise<void>;
+  enterScene(body: { scene_id?: string; restart?: boolean }, card: SceneCard | null): Promise<void>;
+  retryIntro(): Promise<void>;
   pressMic(): Promise<void>;
   releaseMic(): Promise<void>;
   confirmPreview(): Promise<void>;
   cancelPreview(): void;
-  retryPreview(): void;
   retryFailed(): Promise<void>;
-  sendText(text: string): Promise<void>;
-  tapObject(objectId: string): Promise<void>;
+  sendText(text: string): Promise<boolean>;
+  tapObject(objectId: string, actionId?: string): Promise<void>;
+  chooseDifficulty(d: Difficulty): void;
+  setDifficulty(d: Difficulty): Promise<void>;
+  openNotebook(): void;
+  setPhraseOpen(open: boolean): void;
+  askPhrase(text: string): Promise<void>;
+  showPhrase(p: Phrase): void;
+  playPhrase(p: Phrase): void;
+  usePhrase(p: Phrase): void;
   requestHelp(): Promise<void>;
-  replay(line: SpokenLine, rate?: number): void;
-  setKeyboard(on: boolean): void;
-  touch(): void;
-  resetGame(opts: { restart: boolean }): Promise<void>;
+  setPersona(id: string): Promise<void>;
+  replay(line: Line, rate?: number): void;
+  finishScene(): Promise<void>;
+  continueJourney(): Promise<void>;
+  restartScene(): Promise<void>;
+  newJourney(): Promise<void>;
   dismissNotice(): void;
 }
 
-let flightSeq = 1;
 let autoTimer: number | null = null;
-let endTimer: number | null = null;
+let summaryTimer: number | null = null;
+let toastTimer: number | null = null;
+let glowTimer: number | null = null;
+let clueTimer: number | null = null;
+let speakTimer: number | null = null;
 let recordingId = 0;
 
 function clearAuto() {
@@ -106,239 +156,389 @@ function clearAuto() {
   autoTimer = null;
 }
 
-function uidLocal() {
-  return `rec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+/** Reading-length pause for a line whose audio cannot play. */
+function holdMs(line: Line): number {
+  const words = line.segments.filter((s) => s.r || s.t.trim().length > 1).length || line.segments.length;
+  return Math.min(4200, 900 + words * 420);
 }
 
-let noticeTimer: number | null = null;
-
 export const useGame = create<GameState>((set, get) => {
-  linePlayer.on((id, rate) => set({ speakingLineId: id, speakingRate: rate }));
+  linePlayer.onAudible = (audible) => set({ audible });
+  linePlayer.on((id, rate) => {
+    set((s) => {
+      if (!id || !s.hidden[id]) return { speakingLineId: id, speakingRate: rate };
+      const hidden = { ...s.hidden };
+      delete hidden[id];
+      return { speakingLineId: id, speakingRate: rate, hidden };
+    });
+  });
+
+  function queue(lines: Line[]): QueueItem[] {
+    const { journeyId, token } = get();
+    return lines.map((l) => ({
+      lineId: l.line_id,
+      src: () => api.lineAudio(journeyId!, token!, l.line_id, l.audio_url),
+      fallbackMs: holdMs(l),
+    }));
+  }
 
   function hydrate(st: PublicState) {
-    const cid = st.cartridge.id;
     set({
-      cartridge: st.cartridge,
-      cartridgeId: cid,
+      journeyId: st.journey_id,
+      language: st.language,
+      personas: st.personas,
+      personaId: st.persona_id,
+      scene: st.scene,
+      scenes: st.scenes ?? [],
       transcript: st.transcript ?? [],
-      world: st.world,
-      learning: st.learning,
-      episodeComplete: st.episode_complete,
-      recap: st.recap,
-      helpCue: st.help_cue,
-      showEnd: st.episode_complete,
-      launchAt: null,
+      zones: st.zones ?? {},
+      mood: st.mood,
+      progress: st.progress,
+      sceneComplete: st.scene_complete,
+      summary: st.summary,
+      story: st.story ?? get().story,
+      game: st.game ?? null,
+      ending: st.ending ?? null,
+      phrasebook: st.phrasebook ?? [],
+      cluesSeen: st.game?.clues.length ?? 0,
+      clueToast: null,
+      hidden: {},
+      help: null,
+      helpGlow: false,
       pending: null,
       preview: null,
-      mic: "idle",
+      previewDeadline: null,
+      phase: "idle",
       notice: null,
       failedAct: null,
-      flights: [],
     });
   }
 
-  function lineItems(lines: SpokenLine[], rate = 1) {
-    const { sid, token } = get();
-    return lines.map((l) => ({
-      lineId: l.line_id,
-      src: () => api.audioSrc(sid!, token!, l.audio_url, l.line_id),
-      rate,
-    }));
+  function scheduleSummary() {
+    if (summaryTimer != null) window.clearTimeout(summaryTimer);
+    summaryTimer = window.setTimeout(() => {
+      summaryTimer = null;
+      if ((get().summary || get().ending) && get().screen === "play") set({ screen: "summary" });
+    }, SUMMARY_DELAY_MS);
   }
 
-  function scheduleEnd() {
-    if (endTimer != null) window.clearTimeout(endTimer);
-    const check = () => {
-      const s = get();
-      const sinceLaunch = s.launchAt ? performance.now() - s.launchAt : Infinity;
-      if (!s.speakingLineId && sinceLaunch > 4200) {
-        set({ showEnd: true });
-        endTimer = null;
-      } else endTimer = window.setTimeout(check, 400);
-    };
-    endTimer = window.setTimeout(check, 1200);
-  }
-
-  function applyTurn(r: TurnResult, player: PlayerEntry | null) {
-    const prev = get().world;
-    const entries: TranscriptEntry[] = [];
-    if (player) entries.push({ ...player, turn: r.turn });
-    for (const e of r.evidence ?? []) entries.push({ ...e, kind: "evidence", turn: e.turn ?? r.turn } as EvidenceEntry);
-    if (r.narration) entries.push({ kind: "narration", turn: r.turn, text: r.narration });
-    for (const l of r.spoken_lines ?? []) entries.push({ kind: "npc", turn: r.turn, line: l });
-
-    // World diff -> stage moments.
-    const flights: Flight[] = [];
-    const flash: Record<string, number> = { ...get().fixtureFlash };
-    let launchAt = get().launchAt;
-    const now = performance.now();
-    if (prev) {
-      for (const [obj, holder] of Object.entries(r.world.holders)) {
-        if (prev.holders[obj] !== holder) {
-          if (holder === "player") flights.push({ id: flightSeq++, objectId: obj, to: "player" });
-          else if (prev.holders[obj] === "player") flights.push({ id: flightSeq++, objectId: obj, to: "npc" });
-        }
-      }
-      for (const [fx, state] of Object.entries(r.world.fixtures)) {
-        if (prev.fixtures[fx] !== state) {
-          flash[fx] = now;
-          if (state === "launched") launchAt = now;
-        }
-      }
+  /** Speak an exchange: its lines stay hidden until their turn in the queue. */
+  function speak(lines: Line[], complete: boolean, delayMs = 0) {
+    if (speakTimer != null) window.clearTimeout(speakTimer);
+    speakTimer = null;
+    if (!lines.length) {
+      if (complete) scheduleSummary();
+      return;
     }
+    const hidden: Record<string, true> = {};
+    for (const l of lines) hidden[l.line_id] = true;
+    set({ hidden });
+    const start = () => {
+      speakTimer = null;
+      set({ narrating: false });
+      void linePlayer.playSequence(queue(lines)).then(() => {
+        // Interrupted playback (barge-in) must not leave lines unseen.
+        set({ hidden: {} });
+        if (complete) scheduleSummary();
+      });
+    };
+    if (delayMs > 0) {
+      set({ narrating: true });
+      speakTimer = window.setTimeout(start, delayMs);
+    } else start();
+  }
+
+  /** The learner acts before the character has started: show the lines, skip the wait. */
+  function cutToLines() {
+    if (speakTimer == null) return;
+    window.clearTimeout(speakTimer);
+    speakTimer = null;
+    set({ hidden: {}, narrating: false });
+  }
+
+  function noteClues(game: GameView | null | undefined) {
+    if (!game) return;
+    const known = get().game?.clues.length ?? 0;
+    if (game.clues.length <= known) return;
+    const newest = game.clues[game.clues.length - 1];
+    set({ clueToast: newest });
+    if (clueTimer != null) window.clearTimeout(clueTimer);
+    clueTimer = window.setTimeout(() => set({ clueToast: null }), CLUE_TOAST_MS);
+  }
+
+  function applyTurn(r: TurnResult, learner: LearnerEntry | null) {
+    const entries: Entry[] = [];
+    const events = r.events ?? [];
+    // `events` may carry only scene events or the whole turn; never add an entry twice.
+    const fromServer = events.find((e): e is LearnerEntry => e.kind === "learner");
+    if (fromServer) entries.push(fromServer);
+    else if (learner) entries.push({ ...learner, turn: r.turn });
+    for (const e of events) if (e.kind === "scene" || e.kind === "clue") entries.push(e);
+    if (r.narration) entries.push({ kind: "narration", turn: r.turn, text: r.narration });
+    else if (r.stage_direction) entries.push({ kind: "direction", turn: r.turn, text: r.stage_direction });
+    for (const l of r.lines ?? []) entries.push({ kind: "npc", turn: r.turn, line: l });
+
+    noteClues(r.game);
     set((s) => ({
       transcript: [...s.transcript, ...entries],
-      world: r.world,
-      learning: r.learning,
-      episodeComplete: r.episode_complete,
-      recap: r.recap ?? s.recap,
-      helpCue: null,
+      game: r.game ?? s.game,
+      ending: r.ending ?? s.ending,
+      zones: r.zones,
+      mood: r.mood,
+      progress: r.progress,
+      sceneComplete: r.scene_complete,
+      summary: r.summary ?? s.summary,
+      help: null,
+      helpGlow: false,
       pending: null,
-      mic: "idle",
+      learnerShownAt: Date.now(),
+      phase: "idle",
       notice: null,
       failedAct: null,
-      flights: [...s.flights, ...flights],
-      fixtureFlash: flash,
-      launchAt,
-      focusPulseAt: r.world.focus ? now : s.focusPulseAt,
-      lastActivity: Date.now(),
     }));
-    // Text first; audio follows.
-    if (r.spoken_lines?.length) void linePlayer.playSequence(lineItems(r.spoken_lines));
-    if (r.episode_complete) {
-      if (!r.recap) {
-        const { sid, token } = get();
-        api.recap(sid!, token!).then((recap) => set({ recap })).catch(() => {});
-      }
-      if (!launchAt) set({ launchAt: now });
-      scheduleEnd();
-    }
+    speak(r.lines ?? [], r.scene_complete || !!r.ending, readingMs(r.narration));
   }
 
-  async function act(body: ActBody, player: PlayerEntry) {
-    const { sid, token } = get();
-    if (!sid || !token) return;
+  async function act(body: ActBody, learner: LearnerEntry) {
+    const { journeyId, token } = get();
+    if (!journeyId || !token) return;
     clearAuto();
-    set({ mic: "waiting", pending: player, preview: null, previewDeadline: null, notice: null, failedAct: null, lastActivity: Date.now() });
+    cutToLines();
+    linePlayer.stop();
+    set({ phase: "waiting", pending: learner, preview: null, previewDeadline: null, notice: null, failedAct: null });
     try {
-      const r = await api.act(sid, token, body);
-      applyTurn(r, player);
+      applyTurn(await api.act(journeyId, token, body), learner);
     } catch (e) {
       const err = e as ApiError;
       if (err.status === 409) {
-        // Attempt already consumed (e.g. double submit): resync from the server.
+        // Consumed or busy: the server is the truth, resync.
         try {
-          hydrate(await api.getState(sid, token));
+          hydrate(await api.getState(journeyId, token));
         } catch {
-          set({ mic: "idle", pending: null });
+          set({ phase: "idle", pending: null });
         }
         return;
       }
-      if (err.status === 422 || err.status === 404) {
-        // Nothing usable was heard / attempt unknown: not a story failure, just try again.
-        set({ mic: "empty", pending: null, notice: "Didn't catch that — try again." });
+      if (err.status === 404 || err.status === 422) {
+        set({ phase: "idle", pending: null, notice: "That one got lost. Say it again, or type it." });
         return;
       }
-      set({
-        mic: "error",
-        pending: player,
-        failedAct: body,
-        notice: "The moment slipped — nothing was lost. Try sending it again.",
-      });
+      // Model failure: state is unchanged server-side and the attempt is reusable.
+      set({ phase: "error", pending: learner, failedAct: body, notice: err.status === 402 ? err.detail : "Didn't go through." });
+    }
+  }
+
+  async function runIntro() {
+    const { journeyId, token, intro } = get();
+    if (!journeyId || !token || !intro) return;
+    const t0 = performance.now();
+    set({ intro: { ...intro, error: null } });
+    try {
+      let r: TurnResult | null = null;
+      try {
+        r = await api.enterScene(journeyId, token, intro.body);
+      } catch (e) {
+        // Already inside a scene (double click, stale tab): just rejoin it.
+        if ((e as ApiError).status !== 409) throw e;
+      }
+      const st = await api.getState(journeyId, token);
+      const knewIntro = !!get().intro?.scene?.intro;
+      if (st.scene) set({ intro: { ...get().intro!, scene: { ...st.scene, intro: st.scene.intro } } });
+      const wait = Math.max(INTRO_MIN_MS - (performance.now() - t0), knewIntro ? 0 : 1800);
+      if (wait > 0) await new Promise((res) => window.setTimeout(res, wait));
+      hydrate(st);
+      set({ screen: (st.scene_complete && st.summary) || st.ending ? "summary" : "play", intro: null });
+      if (r) {
+        set({ learnerShownAt: 0 });
+        speak(r.lines ?? [], r.scene_complete, readingMs(r.narration));
+      }
+    } catch (e) {
+      const err = e as ApiError;
+      // 402: the provider account is unfunded; say so, because retrying cannot help.
+      set({ intro: { ...get().intro!, error: err.status === 402 ? err.detail : "Couldn't set the scene." } });
     }
   }
 
   return {
     screen: "boot",
-    bootError: null,
+    catalog: null,
+    startError: null,
     starting: false,
-    cartridgeId: DEFAULT_CARTRIDGE,
-    cartridge: null,
-    sid: null,
+    chosenPersona: null,
+    journeyId: null,
     token: null,
+    language: null,
+    personas: [],
+    personaId: null,
+    scene: null,
+    scenes: [],
     transcript: [],
-    world: null,
-    learning: null,
-    episodeComplete: false,
-    recap: null,
-    helpCue: null,
+    zones: {},
+    mood: "neutral",
+    progress: null,
+    sceneComplete: false,
+    summary: null,
+    intro: null,
+    story: null,
+    game: null,
+    ending: null,
+    chosenDifficulty: "story",
+    cluesSeen: 0,
+    clueToast: null,
+    phrasebook: [],
+    phraseOpen: false,
+    phraseBusy: false,
+    phraseError: null,
+    phraseResult: null,
+    draft: { text: "", nonce: 0 },
+    hidden: {},
+    speakingLineId: null,
+    speakingRate: 1,
+    narrating: false,
+    audible: false,
+    help: null,
     helpBusy: false,
-    mic: "idle",
+    helpGlow: false,
+    phase: "idle",
     micDenied: false,
     preview: null,
     previewDeadline: null,
     pending: null,
+    learnerShownAt: 0,
     notice: null,
     failedAct: null,
-    keyboard: false,
-    speakingLineId: null,
-    speakingRate: 1,
-    flights: [],
-    fixtureFlash: {},
-    launchAt: null,
-    focusPulseAt: 0,
-    showEnd: false,
-    lastActivity: Date.now(),
+    toast: null,
 
     async boot() {
-      const saved = loadSession(api.mock);
+      const saved = loadJourney(api.mock);
       if (saved) {
         try {
-          const st = await api.getState(saved.session_id, saved.token);
-          set({ sid: saved.session_id, token: saved.token });
+          const st = await api.getState(saved.journey_id, saved.token);
+          set({ token: saved.token });
           hydrate(st);
-          set({ screen: st.started ? "play" : "start" });
-          return;
+          if (st.scene && st.started) {
+            set({ screen: (st.scene_complete && st.summary) || st.ending ? "summary" : "play" });
+            return;
+          }
+          if (st.summary || st.ending) {
+            set({ screen: "summary" });
+            return;
+          }
         } catch {
-          clearSession(api.mock);
+          clearJourney(api.mock);
+          set({ journeyId: null, token: null });
         }
       }
       try {
-        const list = await api.cartridges();
-        const pick = list.find((c) => c.id === DEFAULT_CARTRIDGE) ?? list[0];
-        if (pick) set({ cartridgeId: pick.id });
+        const catalog = await api.catalog();
+        set({ catalog, language: get().language ?? catalog.language, story: get().story ?? catalog.story ?? null });
       } catch {
-        /* server down: start screen still renders; Start will surface the error */
+        /* server down: the start screen still renders; Begin reports it */
       }
       set({ screen: "start" });
     },
 
+    choosePersona(id) {
+      set({ chosenPersona: id });
+    },
+
+    chooseDifficulty(d) {
+      set({ chosenDifficulty: d });
+    },
+
+    async setDifficulty(d) {
+      const { journeyId, token, game } = get();
+      if (!journeyId || !token || !game || game.difficulty === d) return;
+      set({ game: { ...game, difficulty: d } });
+      try {
+        const st = await api.difficulty(journeyId, token, d);
+        if (st.game) set({ game: st.game });
+        set({ toast: d === "story" ? "Story mode, from the next turn" : "Immersion, from the next turn" });
+      } catch {
+        set({ game, toast: "Couldn't switch just now" });
+      }
+      if (toastTimer != null) window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => set({ toast: null }), 2600);
+    },
+
+    openNotebook() {
+      set({ cluesSeen: get().game?.clues.length ?? 0, clueToast: null });
+    },
+
+    setPhraseOpen(open) {
+      set({ phraseOpen: open, phraseError: null });
+    },
+
+    async askPhrase(text) {
+      const t = text.trim();
+      const { journeyId, token, phraseBusy } = get();
+      if (!t || !journeyId || !token || phraseBusy) return;
+      set({ phraseBusy: true, phraseError: null });
+      try {
+        const p = await api.phrase(journeyId, token, t);
+        set((s) => ({ phraseResult: p, phrasebook: [p, ...s.phrasebook.filter((x) => x.phrase_id !== p.phrase_id)] }));
+      } catch (e) {
+        const err = e as ApiError;
+        set({
+          phraseError:
+            err.status === 422
+              ? "I can only help with what YOU want to say. Type it in English."
+              : err.status === 402
+                ? err.detail
+                : "That didn't come back. Try again.",
+        });
+      } finally {
+        set({ phraseBusy: false });
+      }
+    },
+
+    showPhrase(p) {
+      set({ phraseResult: p, phraseError: null });
+    },
+
+    playPhrase(p) {
+      const { journeyId, token } = get();
+      if (!journeyId || !token) return;
+      void api.phraseAudio(journeyId, token, p.phrase_id, p.audio_url).then((src) => linePlayer.playClip(src)).catch(() => {});
+    },
+
+    usePhrase(p) {
+      set((s) => ({ draft: { text: p.text, nonce: s.draft.nonce + 1 }, phraseOpen: window.innerWidth >= 1100 ? s.phraseOpen : false }));
+    },
+
     async begin() {
       if (get().starting) return;
-      set({ starting: true, bootError: null });
-      // The Start press is the moment to ask for the microphone (PRD §25).
+      set({ starting: true, startError: null });
+      // Begin is the user gesture that asks for the microphone. Declining is fine.
       try {
         await mic.ensure();
         set({ micDenied: false });
       } catch {
-        set({ micDenied: true, keyboard: true });
+        set({ micDenied: true });
       }
       try {
-        let { sid, token } = get();
-        if (!sid || !token) {
-          const created = await api.createSession(get().cartridgeId);
-          sid = created.session_id;
+        let { journeyId, token } = get();
+        if (!journeyId || !token) {
+          const persona = get().chosenPersona ?? get().catalog?.personas[0]?.id;
+          const created = await api.createJourney(persona ? { persona_id: persona } : {});
+          journeyId = created.journey_id;
           token = created.token;
-          saveSession(api.mock, { session_id: sid, token, cartridge_id: get().cartridgeId });
-          set({ sid, token });
+          saveJourney(api.mock, { journey_id: journeyId, token });
+          set({ token });
           hydrate(created.state);
+          const want = get().chosenDifficulty;
+          if (created.state.game && created.state.game.difficulty !== want) hydrate(await api.difficulty(journeyId, token, want));
+        } else if (get().chosenPersona && get().chosenPersona !== get().personaId) {
+          hydrate(await api.persona(journeyId, token, get().chosenPersona!));
         }
-        try {
-          const r = await api.start(sid, token);
-          set({ screen: "play" });
-          applyTurn(r, null);
-        } catch (e) {
-          if ((e as ApiError).status === 409) {
-            hydrate(await api.getState(sid, token));
-            set({ screen: "play" });
-          } else throw e;
-        }
+        const first = get().scenes.find((s) => s.status !== "done") ?? get().catalog?.scenes[0] ?? null;
+        await get().enterScene({}, first);
       } catch (e) {
         const err = e as ApiError;
         set({
-          bootError:
+          startError:
             err.status === 0 || err.status >= 500
-              ? "Can't reach the airfield right now. Is the server running?"
+              ? "Can't reach the server. Check that it is running, then try again."
               : `Couldn't start: ${err.detail ?? err.message}`,
         });
       } finally {
@@ -346,56 +546,66 @@ export const useGame = create<GameState>((set, get) => {
       }
     },
 
+    async enterScene(body, card) {
+      linePlayer.stop();
+      clearAuto();
+      if (summaryTimer != null) window.clearTimeout(summaryTimer);
+      set({ screen: "intro", intro: { scene: card, error: null, body } });
+      await runIntro();
+    },
+
+    retryIntro: runIntro,
+
     async pressMic() {
       const s = get();
-      if (s.mic === "listening" || s.mic === "transcribing" || s.mic === "waiting" || s.episodeComplete) return;
+      if (s.phase === "listening" || s.phase === "transcribing" || s.phase === "waiting" || s.screen !== "play") return;
       clearAuto();
       linePlayer.stop(); // barge-in: the learner talking takes the floor
       try {
         await mic.ensure();
       } catch {
-        set({ micDenied: true, keyboard: true, notice: "Microphone is off. You can type instead." });
+        set({ micDenied: true, phase: "idle", notice: "The microphone is off. You can type instead." });
         return;
       }
       mic.start();
       recordingId++;
-      set({ mic: "listening", preview: null, previewDeadline: null, notice: null, lastActivity: Date.now() });
+      set({ phase: "listening", micDenied: false, preview: null, previewDeadline: null, notice: null, failedAct: null });
     },
 
     async releaseMic() {
-      if (get().mic !== "listening") return;
+      if (get().phase !== "listening") return;
       const myId = recordingId;
       const rec = await mic.stop();
       if (rec.durationMs < MIN_RECORDING_MS) {
-        set({ mic: "idle", notice: "Hold the button while you speak." });
+        set({ phase: "idle", notice: "Hold while you speak, then let go." });
         return;
       }
-      const { sid, token } = get();
-      set({ mic: "transcribing" });
+      const { journeyId, token } = get();
+      set({ phase: "transcribing" });
       try {
-        const tr = await api.transcribe(sid!, token!, rec.blob, uidLocal());
+        const tr = await api.transcribe(journeyId!, token!, rec.blob);
         if (myId !== recordingId) return;
         if (!tr.transcript?.trim()) {
-          set({ mic: "empty", notice: null, preview: null });
+          set({ phase: "idle", preview: null, notice: "Didn't catch that. Try again, or type it." });
           return;
         }
         const deadline = tr.requires_confirmation ? null : Date.now() + AUTO_SUBMIT_MS;
-        set({ mic: "preview", preview: tr, previewDeadline: deadline, lastActivity: Date.now() });
+        set({ phase: "preview", preview: tr, previewDeadline: deadline });
         if (deadline) autoTimer = window.setTimeout(() => void get().confirmPreview(), AUTO_SUBMIT_MS);
       } catch {
         if (myId !== recordingId) return;
-        set({ mic: "empty", notice: "That didn't come through clearly — try again." });
+        set({ phase: "idle", notice: "Couldn't hear that. Type it instead." });
       }
     },
 
     async confirmPreview() {
       const p = get().preview;
-      if (!p || get().mic !== "preview") return;
+      if (!p || get().phase !== "preview") return;
       clearAuto();
       await act(
         { attempt_id: p.attempt_id },
         {
-          kind: "player",
+          kind: "learner",
           turn: 0,
           attempt_id: p.attempt_id,
           input_mode: "speech",
@@ -407,14 +617,9 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     cancelPreview() {
-      // "I meant something else": restore the idle state, nothing is spent.
+      // "I meant something else": nothing is spent.
       clearAuto();
-      set({ mic: "idle", preview: null, previewDeadline: null, notice: null, lastActivity: Date.now() });
-    },
-
-    retryPreview() {
-      clearAuto();
-      set({ mic: "idle", preview: null, previewDeadline: null, notice: "Hold to speak again.", lastActivity: Date.now() });
+      set({ phase: "idle", preview: null, previewDeadline: null, notice: null });
     },
 
     async retryFailed() {
@@ -425,75 +630,120 @@ export const useGame = create<GameState>((set, get) => {
 
     async sendText(text) {
       const t = text.trim();
-      if (!t || get().mic === "waiting") return;
-      linePlayer.stop();
-      await act({ text: t }, { kind: "player", turn: 0, attempt_id: "", input_mode: "text", transcript: t, romanized: null, tapped_object_id: null });
+      const s = get();
+      if (!t || s.phase === "waiting" || s.phase === "listening" || s.phase === "transcribing") return false;
+      await act(
+        { text: t },
+        { kind: "learner", turn: 0, attempt_id: "", input_mode: "text", transcript: t, romanized: null, tapped_object_id: null },
+      );
+      return true;
     },
 
-    async tapObject(objectId) {
-      const m = get().mic;
-      if (m === "waiting" || m === "listening" || m === "transcribing" || get().episodeComplete) return;
-      linePlayer.stop();
-      await act(
-        { tap_object_id: objectId },
-        { kind: "player", turn: 0, attempt_id: "", input_mode: "tap", transcript: "", romanized: null, tapped_object_id: objectId },
-      );
+    async tapObject(objectId, actionId) {
+      const s = get();
+      if (s.phase !== "idle" && s.phase !== "error") return;
+      if (s.sceneComplete) return;
+      await act(actionId ? { tap_object_id: objectId, action_id: actionId } : { tap_object_id: objectId }, {
+        kind: "learner",
+        turn: 0,
+        attempt_id: "",
+        input_mode: "tap",
+        transcript: "",
+        romanized: null,
+        tapped_object_id: objectId,
+        action_id: actionId ?? null,
+      });
     },
 
     async requestHelp() {
-      const { sid, token, helpBusy } = get();
-      if (!sid || !token || helpBusy) return;
-      set({ helpBusy: true, lastActivity: Date.now() });
+      const { journeyId, token, helpBusy, progress } = get();
+      if (!journeyId || !token || helpBusy || !progress?.next_help) return;
+      set({ helpBusy: true });
       try {
-        const { cue, learning } = await api.help(sid, token);
-        set({ helpCue: cue, learning, focusPulseAt: performance.now() });
-        if (cue.kind === "replay_slow" && cue.line) {
-          void linePlayer.playSequence(lineItems([cue.line]), SLOW_RATE);
+        const { help, progress: next } = await api.help(journeyId, token);
+        set({ help, progress: next });
+        if (help.kind === "again") {
+          const byId = new Map<string, Line>();
+          for (const e of get().transcript) if (e.kind === "npc") byId.set(e.line.line_id, e.line);
+          const lines = help.line_ids.map((id) => byId.get(id)).filter((l): l is Line => !!l);
+          if (glowTimer != null) window.clearTimeout(glowTimer);
+          set({ helpGlow: true, hidden: {} });
+          void linePlayer.playSequence(queue(lines), SLOW_RATE).then(() => {
+            glowTimer = window.setTimeout(() => set({ helpGlow: false }), 1800);
+          });
         }
       } catch {
-        set({ notice: "Help is catching its breath — try again in a moment." });
+        set({ notice: "Help didn't load. Try once more." });
       } finally {
         set({ helpBusy: false });
       }
     },
 
+    async setPersona(id) {
+      const { journeyId, token, personaId, personas } = get();
+      if (!journeyId || !token || id === personaId) return;
+      const before = personaId;
+      set({ personaId: id });
+      try {
+        const st = await api.persona(journeyId, token, id);
+        const label = personas.find((p) => p.id === st.persona_id)?.label ?? "";
+        set({ personaId: st.persona_id, toast: `${label}, from the next reply` });
+      } catch {
+        set({ personaId: before, toast: "Couldn't switch just now" });
+      }
+      if (toastTimer != null) window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => set({ toast: null }), 2600);
+    },
+
     replay(line, rate = 1) {
-      set({ lastActivity: Date.now() });
-      if (line.speaker && get().world?.focus) set({ focusPulseAt: performance.now() });
-      void linePlayer.playSequence(lineItems([line], rate), rate);
+      void linePlayer.playSequence(queue([line]), rate);
     },
 
-    setKeyboard(on) {
-      set({ keyboard: on, lastActivity: Date.now() });
-    },
-
-    touch() {
-      set({ lastActivity: Date.now() });
-    },
-
-    async resetGame({ restart }) {
-      const { sid, token } = get();
+    async finishScene() {
+      const { journeyId, token } = get();
+      if (!journeyId || !token) return;
       linePlayer.stop();
       clearAuto();
-      if (endTimer != null) window.clearTimeout(endTimer);
-      if (!sid || !token) {
-        set({ screen: "start" });
-        return;
+      try {
+        const summary = await api.finish(journeyId, token);
+        set({ summary, sceneComplete: true, screen: "summary", phase: "idle", pending: null, preview: null });
+      } catch {
+        set({ notice: "Couldn't finish the scene just now." });
+      }
+    },
+
+    async continueJourney() {
+      const { summary, scenes } = get();
+      const next = summary?.next_scene;
+      if (!next) return;
+      const card = scenes.find((s) => s.id === next.id) ?? { ...next, cover_url: "" };
+      await get().enterScene({ scene_id: next.id }, card);
+    },
+
+    async restartScene() {
+      const { scene } = get();
+      if (!scene) return;
+      await get().enterScene({ scene_id: scene.id, restart: true }, scene);
+    },
+
+    async newJourney() {
+      const { journeyId, token } = get();
+      linePlayer.stop();
+      clearAuto();
+      if (summaryTimer != null) window.clearTimeout(summaryTimer);
+      try {
+        if (journeyId && token) hydrate(await api.reset(journeyId, token));
+      } catch {
+        // Journey gone server-side: start from scratch.
+        clearJourney(api.mock);
+        set({ journeyId: null, token: null });
       }
       try {
-        const st = await api.reset(sid, token);
-        hydrate(st);
-        set({ fixtureFlash: {}, launchAt: null, showEnd: false, helpCue: null });
-        if (restart) {
-          const r = await api.start(sid, token);
-          set({ screen: "play" });
-          applyTurn(r, null);
-        } else set({ screen: "start" });
+        if (!get().catalog) set({ catalog: await api.catalog() });
       } catch {
-        // Session gone server-side: start from scratch.
-        clearSession(api.mock);
-        set({ sid: null, token: null, screen: "start", showEnd: false });
+        /* start screen renders without the cover */
       }
+      set({ screen: "start", summary: null, ending: null, scene: null, chosenPersona: get().personaId, phraseResult: null, phraseOpen: false });
     },
 
     dismissNotice() {
@@ -502,7 +752,8 @@ export const useGame = create<GameState>((set, get) => {
   };
 });
 
-// Transient hints fade on their own; failures that need action (failedAct) persist.
+// Transient notices fade on their own; a failed send stays until it is resolved.
+let noticeTimer: number | null = null;
 useGame.subscribe((s, prev) => {
   if (!s.notice || s.notice === prev.notice || s.failedAct) return;
   if (noticeTimer != null) window.clearTimeout(noticeTimer);
@@ -510,5 +761,5 @@ useGame.subscribe((s, prev) => {
   noticeTimer = window.setTimeout(() => {
     const now = useGame.getState();
     if (now.notice === shown && !now.failedAct) useGame.setState({ notice: null });
-  }, 4500);
+  }, 5000);
 });

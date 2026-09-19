@@ -1,88 +1,79 @@
-// Main play view. Desktop: stage (largest surface) + mic dock on the left,
-// dialogue panel on the right. Phone: stage on top, dialogue, dock pinned below.
+// Play: the scene fills the viewport and everything else floats over it.
 
-import { useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useGame } from "../store";
-import { Stage } from "./Stage";
-import { DialoguePanel } from "./Dialogue";
-import { MicDock } from "./MicDock";
-import { CornerMenu, InventoryTray, ObjectiveChip, Wordmark } from "./Hud";
-import { EndCard } from "./EndCard";
-
-function useIsMobile() {
-  const q = "(max-width: 900px)";
-  const [m, setM] = useState(() => window.matchMedia(q).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(q);
-    const on = () => setM(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return m;
-}
+import { Scene } from "./Scene";
+import { Subtitles } from "./Subtitles";
+import { InputBar } from "./InputBar";
+import { Controls, SceneStatus } from "./TopBar";
+import { Hud } from "./Hud";
+import { HistoryDrawer } from "./HistoryDrawer";
+import { NotebookDrawer } from "./Notebook";
+import { Phrasebook, PhrasebookTab } from "./Phrasebook";
+import { useElementSize } from "../lib/hooks";
+import { freeSpan, useLayout } from "../lib/layout";
 
 export function PlayView() {
-  const mobile = useIsMobile();
-  const showEnd = useGame((s) => s.showEnd);
-  const name = useGame((s) => s.cartridge?.name);
-  const touch = useGame((s) => s.touch);
+  const scene = useGame((s) => s.scene);
+  const openNotebook = useGame((s) => s.openNotebook);
+  const [drawer, setDrawer] = useState<"history" | "notebook" | null>(null);
+  const closeDrawer = useCallback(() => setDrawer(null), []);
+  const frame = useLayout((s) => s.frame);
+  const vp = useLayout((s) => s.vp);
+  const rects = useLayout((s) => s.rects);
 
-  if (mobile) {
-    return (
-      <main className="flex h-full w-full flex-col bg-ink" onPointerDown={touch} data-testid="play-view" data-layout="mobile">
-        <header className="flex h-12 shrink-0 items-center justify-between px-4">
-          <Wordmark />
-          <CornerMenu />
-        </header>
-        <div className="relative aspect-[16/10] w-full shrink-0">
-          <Stage compact />
-          <div className="absolute bottom-2 left-2">
-            <InventoryTray compact />
-          </div>
-        </div>
-        <div className="shrink-0 px-3 pt-3">
-          <ObjectiveChip className="w-full justify-between" compact />
-        </div>
-        <div className="min-h-0 flex-1">
-          <DialoguePanel mobile />
-        </div>
-        <div className="shrink-0 border-t border-line bg-night/90 pb-[env(safe-area-inset-bottom)]">
-          <MicDock compact />
-        </div>
-        {showEnd && <EndCard />}
-      </main>
-    );
-  }
+  // Where the dialogue goes. On a tall screen the picture sits in the upper part and
+  // the turn is captioned directly beneath it. Otherwise it is film subtitles over the
+  // lower part of the picture, moved sideways when a served object stands where they
+  // would be.
+  const caption = !!frame?.letterboxed && vp.h - (frame.top + frame.height) > 330;
+  const [blockRef, block] = useElementSize<HTMLDivElement>();
+  const span = useMemo(() => {
+    if (caption || vp.w < 900) return null;
+    return freeSpan(Object.values(rects), { top: vp.h - 104 - Math.max(block.h, 120), bottom: vp.h - 104 }, vp.w, 300, 24, 640);
+  }, [caption, rects, vp.w, vp.h, block.h]);
+  const compact = vp.h > 0 && vp.h < 520;
 
+  if (!scene) return null;
   return (
-    <main className="grid h-full w-full grid-cols-[minmax(0,1fr)_clamp(380px,32vw,480px)] bg-ink" onPointerDown={touch} data-testid="play-view" data-layout="desktop">
-      <div className="relative flex min-h-0 min-w-0 flex-col">
-        <div className="relative min-h-0 flex-1">
-          <Stage />
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-5">
-            <div className="pointer-events-auto flex min-w-0 flex-col items-start gap-3">
-              <div className="flex items-center gap-3">
-                <Wordmark />
-                {name && <span className="font-display text-[15px] italic text-text/70">{name}</span>}
-              </div>
-              <ObjectiveChip />
-            </div>
-            <div className="pointer-events-auto">
-              <CornerMenu />
-            </div>
+    <main data-testid="play-view" data-scene={scene.id} className="slow-fade-in absolute inset-0 overflow-hidden">
+      <Scene scene={scene} />
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 px-3 pt-3 sm:px-6 sm:pt-5">
+        <SceneStatus>
+          <div className="mt-1 sm:hidden">
+            <Hud />
           </div>
-          <div className="absolute bottom-5 left-5">
-            <InventoryTray />
-          </div>
+        </SceneStatus>
+        <div className="absolute left-1/2 top-5 hidden -translate-x-1/2 sm:block">
+          <Hud />
         </div>
-        <div className="shrink-0 border-t border-line bg-gradient-to-b from-night to-ink">
-          <MicDock />
+        <Controls
+          onHistory={() => setDrawer("history")}
+          onNotebook={() => {
+            openNotebook();
+            setDrawer("notebook");
+          }}
+        />
+      </header>
+      {caption && frame && (
+        <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: frame.top + frame.height - 6 }}>
+          <Subtitles compact={compact} caption />
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col">
+        {!caption && (
+          <div ref={blockRef} style={span ? { marginLeft: span.centre - Math.min(820, span.width) / 2, width: Math.min(820, span.width) } : undefined} data-shifted={span ? "1" : "0"}>
+            <Subtitles compact={compact} />
+          </div>
+        )}
+        <div className="pt-3 sm:pt-5">
+          <InputBar />
         </div>
       </div>
-      <aside className="min-h-0 border-l border-line bg-panel/95">
-        <DialoguePanel />
-      </aside>
-      {showEnd && <EndCard />}
+      <PhrasebookTab />
+      <Phrasebook />
+      {drawer === "history" && <HistoryDrawer onClose={closeDrawer} />}
+      {drawer === "notebook" && <NotebookDrawer onClose={closeDrawer} />}
     </main>
   );
 }

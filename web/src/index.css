@@ -1,28 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --font-ui: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", Georgia, serif;
-  --font-jp: "Zen Kaku Gothic New", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-story: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-target: "Noto Sans SC", "Noto Sans JP", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", "Yu Gothic", "Inter",
+    system-ui, sans-serif;
 
-  --color-ink: #080a10;
-  --color-night: #0d1019;
-  --color-panel: #121622;
-  --color-raised: #1a1f2d;
-  --color-line: rgba(255, 255, 255, 0.08);
-  --color-line-strong: rgba(255, 255, 255, 0.16);
+  --color-night: #0b0c0c;
+  --color-sheet: #101111;
+  --color-ink: #f1eee8;
+  --color-ink-2: rgb(241 238 232 / 0.66);
+  --color-ink-3: rgb(241 238 232 / 0.42);
+  --color-hair: rgb(241 238 232 / 0.14);
+  --color-hair-2: rgb(241 238 232 / 0.26);
+  --color-glass: rgb(13 14 14 / 0.72);
+  --color-jade: #9fc3b1;
+  /* Urgency only: the clock's last minutes and money you do not have. */
+  --color-ember: #e0a583;
 
-  --color-text: #eef0f5;
-  --color-muted: #a3abbb;
-  --color-faint: #6c7486;
-  --color-romaji: #9fb9c2;
-
-  --color-brass: #e9b45f;
-  --color-brass-strong: #f6cd83;
-  --color-brass-deep: #9a6a26;
-  --color-sky: #8fc3c8;
-  --color-ok: #93d9ae;
-  --color-rose: #e8a3a3;
+  --ease-out: cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 
 html,
@@ -34,8 +30,9 @@ body,
 body {
   margin: 0;
   font-family: var(--font-ui);
-  background: var(--color-ink);
-  color: var(--color-text);
+  font-feature-settings: "cv11", "ss01";
+  background: var(--color-night);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
@@ -43,13 +40,12 @@ body {
 }
 
 ::selection {
-  background: rgba(233, 180, 95, 0.3);
+  background: rgb(159 195 177 / 0.32);
 }
 
 :focus-visible {
-  outline: 2px solid rgba(233, 180, 95, 0.7);
+  outline: 1.5px solid var(--color-jade);
   outline-offset: 2px;
-  border-radius: 10px;
 }
 
 button {
@@ -60,280 +56,289 @@ button:disabled {
   cursor: default;
 }
 
-.jp {
-  font-family: var(--font-jp);
-  font-feature-settings: "palt" 1;
+@layer components {
+/* Target-language text: the lang attribute picks locale-appropriate glyph forms. */
+.target {
+  font-family: var(--font-target);
+  font-weight: 500;
+}
+.target:lang(ja) {
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", var(--font-target);
 }
 
-.glass {
-  background: linear-gradient(180deg, rgba(22, 27, 40, 0.78), rgba(13, 16, 25, 0.82));
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-  border: 1px solid var(--color-line);
+/* ---- Ruby: romanization sits over each word; the gap between words shows where
+   one ends and the next begins. Real <ruby>, laid out as a column so the
+   romanization never collides with a neighbour. */
+.ruby-line {
+  display: block;
+  line-height: 1.15;
+  /* Even line lengths, so a wrapped subtitle never strands one word. */
+  text-wrap: balance;
+}
+.ruby-line ruby,
+.ruby-line .ruby-col {
+  display: inline-flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  vertical-align: baseline;
+  margin-inline: 0.14em;
+}
+.ruby-line .ruby-col.is-punct {
+  margin-inline: 0;
+}
+.ruby-line rt,
+.ruby-line .ruby-pad {
+  display: block;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: 0.44em;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--color-ink-2);
+  padding-bottom: 0.22em;
+  white-space: nowrap;
+  text-align: center;
+  user-select: none;
+}
+.ruby-line.is-dim rt {
+  color: inherit;
 }
 
-.scroll-thin {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+/* Text over the painting: readable on any part of it without a box. */
+.over-art {
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.85),
+    0 0 14px rgb(0 0 0 / 0.55);
 }
 
-.grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.07;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+/* ---- Scene objects */
+.cutout {
+  transition:
+    left 520ms var(--ease-out),
+    top 520ms var(--ease-out),
+    height 520ms var(--ease-out),
+    opacity 260ms var(--ease-out);
+}
+.cutout-img {
+  transition:
+    transform 180ms var(--ease-out),
+    filter 180ms var(--ease-out);
+  filter: drop-shadow(0 6px 8px rgb(0 0 0 / 0.35));
+  transform-origin: 50% 100%;
+}
+.cutout:not([disabled]):hover .cutout-img,
+.cutout:focus-visible .cutout-img {
+  transform: translateY(-1.5%) scale(1.03);
+}
+.cutout:active .cutout-img {
+  transform: scale(0.985);
+}
+/* The arc a served object travels along: lift and swell mid-way. */
+.cutout-arc {
+  animation: arc 520ms var(--ease-out);
+  transform-origin: 50% 100%;
+}
+@keyframes arc {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-9%) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+/* Code-controlled highlight: a crisp outline that follows the PNG alpha. */
+.cutout-lit .cutout-img {
+  animation: lit 1500ms ease-in-out infinite;
+}
+@keyframes lit {
+  0%,
+  100% {
+    filter: drop-shadow(2px 0 0 rgb(241 238 232 / 1)) drop-shadow(-2px 0 0 rgb(241 238 232 / 1))
+      drop-shadow(0 2px 0 rgb(241 238 232 / 1)) drop-shadow(0 -2px 0 rgb(241 238 232 / 1))
+      drop-shadow(0 0 10px rgb(241 238 232 / 0.35));
+  }
+  50% {
+    filter: drop-shadow(2px 0 0 rgb(241 238 232 / 0.6)) drop-shadow(-2px 0 0 rgb(241 238 232 / 0.6))
+      drop-shadow(0 2px 0 rgb(241 238 232 / 0.6)) drop-shadow(0 -2px 0 rgb(241 238 232 / 0.6))
+      drop-shadow(0 0 10px rgb(241 238 232 / 0.12));
+  }
 }
 
-/* ---------- motion ---------- */
-
-@keyframes rise-in {
+/* ---- Game HUD */
+.tick {
+  animation: tick 320ms var(--ease-out);
+}
+@keyframes tick {
   from {
+    opacity: 0.2;
+    transform: translateY(-3px);
+  }
+}
+/* "+3 min", "-¥20": what the last move cost, then gone. */
+.spent {
+  animation: spent 1900ms var(--ease-out) forwards;
+}
+@keyframes spent {
+  0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
-  to {
+  15%,
+  70% {
     opacity: 1;
-    transform: none;
+    transform: translateY(0);
   }
+  100% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+.badge-in {
+  animation: badge-in 300ms var(--ease-out) both;
+}
+@keyframes badge-in {
+  from {
+    transform: scale(0);
+  }
+}
+.sheet-in {
+  animation: sheet-in 260ms var(--ease-out) both;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+/* The story's voice. */
+.story {
+  font-family: var(--font-story);
+  font-optical-sizing: auto;
+  letter-spacing: 0.003em;
+}
+
+/* ---- Small motion vocabulary */
+.fade-in {
+  animation: fade-in 240ms var(--ease-out) both;
 }
 .rise-in {
-  animation: rise-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: rise-in 260ms var(--ease-out) both;
 }
-
+.slow-fade-in {
+  animation: fade-in 700ms var(--ease-out) both;
+}
 @keyframes fade-in {
   from {
     opacity: 0;
   }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* The learner's own line is shown briefly, then gets out of the way. */
+.linger {
+  animation:
+    rise-in 220ms var(--ease-out) both,
+    fade-out 600ms ease-in 4200ms forwards;
+}
+@keyframes fade-out {
   to {
-    opacity: 1;
+    opacity: 0;
   }
 }
-.fade-in {
-  animation: fade-in 0.6s ease both;
+.drawer-in {
+  animation: drawer-in 240ms var(--ease-out) both;
 }
-
-@keyframes hold-bob {
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+.thinking span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 3px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  opacity: 0.25;
+  animation: think 1200ms ease-in-out infinite;
+}
+.thinking span:nth-child(2) {
+  animation-delay: 160ms;
+}
+.thinking span:nth-child(3) {
+  animation-delay: 320ms;
+}
+@keyframes think {
   0%,
-  100% {
-    transform: translateY(0) rotate(-4deg);
-  }
-  50% {
-    transform: translateY(-7%) rotate(3deg);
-  }
-}
-@keyframes point-nudge {
-  0%,
-  100% {
-    transform: translateX(0) rotate(-8deg);
-  }
-  50% {
-    transform: translateX(-6%) rotate(-12deg);
-  }
-}
-@keyframes offer-reach {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    transform: translate(-85%, 45%) scale(1.35);
-  }
-}
-@keyframes withhold-pull {
-  0% {
-    transform: translate(0, 0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(38%, 42%) scale(0.88);
-    opacity: 0.92;
-  }
-}
-@keyframes glow-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(0.92);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-}
-@keyframes ping-ring {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.85;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-@keyframes speak-bob {
-  0%,
-  100% {
-    transform: translate(-50%, 0);
-  }
-  50% {
-    transform: translate(-50%, -0.9%);
-  }
-}
-@keyframes hotspot-flash {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.5);
-  }
-  25% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.6);
-  }
-}
-@keyframes camera-drift {
-  0% {
-    transform: scale(1) translate(0, 0);
-  }
-  100% {
-    transform: scale(1.07) translate(-1.2%, 2.2%);
-  }
-}
-@keyframes sky-light {
-  0% {
-    opacity: 0;
-  }
-  35% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.55;
-  }
-}
-@keyframes ember {
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 0;
-  }
-  15% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-120px) scale(0.4);
-    opacity: 0;
-  }
-}
-@keyframes dots {
-  0%,
-  80%,
+  60%,
   100% {
     opacity: 0.25;
-    transform: translateY(0);
   }
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
+  30% {
+    opacity: 0.9;
   }
 }
-@keyframes help-offer {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(233, 180, 95, 0);
-  }
-  50% {
-    box-shadow: 0 0 0 7px rgba(233, 180, 95, 0.18);
-  }
+/* The cancel window: a hairline that runs out. */
+.countdown {
+  transform-origin: left;
+  animation: countdown linear forwards;
 }
-@keyframes mic-halo {
-  0% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(1.55);
-    opacity: 0;
-  }
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes inventory-land {
-  0% {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.15);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-@keyframes chip-pop {
-  0% {
-    transform: scale(0.85);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-@keyframes bar-in {
+@keyframes countdown {
   from {
-    transform: translateY(-100%);
+    transform: scaleX(1);
   }
   to {
-    transform: none;
-  }
-}
-@keyframes bar-in-bottom {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: none;
-  }
-}
-@keyframes slow-zoom {
-  0% {
-    transform: scale(1.04);
-  }
-  100% {
-    transform: scale(1.12);
+    transform: scaleX(0);
   }
 }
 
-.anim-dots > span {
-  display: inline-block;
-  animation: dots 1.2s infinite ease-in-out;
+input[type="range"].quiet {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: var(--color-hair-2);
+  border-radius: 1px;
+  outline-offset: 6px;
 }
-.anim-dots > span:nth-child(2) {
-  animation-delay: 0.15s;
+input[type="range"].quiet::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  border: 0;
 }
-.anim-dots > span:nth-child(3) {
-  animation-delay: 0.3s;
+input[type="range"].quiet::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  border: 0;
+}
+
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-hair-2) transparent;
+}
+
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html:not([data-motion="full"]) *,
-  html:not([data-motion="full"]) *::before,
-  html:not([data-motion="full"]) *::after {
-    animation-duration: 0.001ms !important;
+  /* The countdown is information (time left to cancel), so it keeps running. */
+  *:not(.countdown),
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-duration: 1ms !important;
   }
-}
-html[data-motion="reduced"] *,
-html[data-motion="reduced"] *::before,
-html[data-motion="reduced"] *::after {
-  animation-duration: 0.001ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
 }

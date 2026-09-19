@@ -8,8 +8,8 @@ from __future__ import annotations
 import json
 import math
 import os
-import re
 import threading
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -22,7 +22,6 @@ from media.common import (
     SpeechTimeout,
     classify_exception,
     env_value,
-    language_name,
     log,
     provider_chain,
     wav_loudest_frame_dbfs,
@@ -45,7 +44,19 @@ DEFAULT_GEMINI_STT_THINKING = "minimal"
 # ElevenLabs reports ISO 639-3; the rest of the app speaks ISO 639-1 / BCP-47 primaries.
 ISO3_TO_ISO1 = {"jpn": "ja", "eng": "en", "kor": "ko", "cmn": "zh", "zho": "zh", "spa": "es",
                 "fra": "fr", "deu": "de"}
-_JAPANESE_SCRIPT = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
+
+
+@dataclass(frozen=True)
+class LanguageHint:
+    """What the recognizer needs to know about the target language.
+
+    Built by the caller from its language profile; media/ knows no language itself.
+    `romanization_system` is None for languages written in the Latin script.
+    """
+
+    locale: str
+    name: str
+    romanization_system: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +79,7 @@ class STTProvider(Protocol):
     name: str
 
     def transcribe(
-        self, audio: bytes, mime: str, *, target_locale: str, support_locale: str
+        self, audio: bytes, mime: str, *, target: LanguageHint, support_locale: str
     ) -> TranscriptionResult: ...
 
 
@@ -78,15 +89,36 @@ def normalize_mime(mime: str) -> str:
             "audio/mpeg": "audio/mp3", "audio/x-m4a": "audio/mp4"}.get(base, base or "audio/wav")
 
 
-def _languages(codes: Sequence[str], transcript: str) -> list[str]:
+def _base_code(code: str) -> str:
+    base = str(code).strip().lower().replace("_", "-").split("-")[0]
+    return ISO3_TO_ISO1.get(base, base)
+
+
+def _has_non_latin_letters(text: str) -> bool:
+    return any(
+        char.isalpha() and not unicodedata.name(char, "LATIN").startswith("LATIN")
+        for char in text
+    )
+
+
+def _languages(codes: Sequence[str], transcript: str, target: LanguageHint) -> list[str]:
+    """Normalized language codes; providers often report one code for a code-switched clip.
+
+    A target language that declares a romanization system is written in a non-Latin script,
+    so non-Latin letters in the transcript mean the target language was spoken.
+    """
     out: list[str] = []
     for code in codes:
-        base = str(code).strip().lower().replace("_", "-").split("-")[0]
-        base = ISO3_TO_ISO1.get(base, base)
+        base = _base_code(code)
         if base and base not in out:
             out.append(base)
-    if _JAPANESE_SCRIPT.search(transcript) and "ja" not in out:
-        out.append("ja")
+    target_code = _base_code(target.locale)
+    if (
+        target.romanization_system
+        and target_code not in out
+        and _has_non_latin_letters(transcript)
+    ):
+        out.append(target_code)
     return out
 
 
@@ -112,7 +144,7 @@ class ElevenLabsSTT:
         self.http = http or httpx.Client(timeout=httpx.Timeout(STT_TIMEOUT_S, connect=5.0))
 
     def transcribe(
-        self, audio: bytes, mime: str, *, target_locale: str, support_locale: str
+        self, audio: bytes, mime: str, *, target: LanguageHint, support_locale: str
     ) -> TranscriptionResult:
         # language_code is deliberately NOT sent: code-switched attempts must survive.
         extension = normalize_mime(mime).split("/")[-1]
@@ -139,7 +171,7 @@ class ElevenLabsSTT:
         return TranscriptionResult(
             transcript=transcript,
             romanized=None,
-            detected_languages=_languages([code] if code and transcript else [], transcript),
+            detected_languages=_languages([code] if code and transcript else [], transcript, target),
             confidence=elevenlabs_confidence(payload) if transcript else None,
             provider=self.name,
         )
@@ -157,42 +189,47 @@ def elevenlabs_confidence(payload: Mapping[str, Any]) -> float | None:
     return _clamp01(payload.get("language_probability"))
 
 
-GEMINI_STT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
+def gemini_stt_schema(target: LanguageHint) -> dict[str, Any]:
+    """Response schema; `romanized` exists only when the target language has a romanization."""
+    properties: dict[str, Any] = {
         "transcript": {"type": "string"},
-        "romanized": {"type": "string"},
         "languages": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-    },
-    "required": ["transcript", "romanized", "languages", "confidence"],
-}
+    }
+    if target.romanization_system:
+        properties["romanized"] = {"type": "string"}
+    return {"type": "object", "properties": properties, "required": list(properties)}
 
 
-def gemini_stt_prompt(*, target_locale: str, support_locale: str) -> str:
-    target = language_name(target_locale)
-    support = language_name(support_locale)
-    return (
+def gemini_stt_prompt(*, target: LanguageHint, support_locale: str) -> str:
+    name = f"{target.name} ({target.locale})"
+    lines = [
         "You are the speech recognizer for a voice-first language-learning game. The speaker is "
-        f"an absolute beginner in {target} whose own language is {support}. They may speak "
-        f"{target}, {support}, or a mix of both in one utterance.\n"
-        "Transcribe the audio VERBATIM:\n"
-        f"- Keep mixed {support} and {target} exactly as spoken, in the order spoken. "
-        "Never translate.\n"
-        f"- Write words that are clearly {target} in normal {target} script "
-        "(e.g. 鍵をください); write "
-        f"{support} words in {support}.\n"
-        "- Never correct grammar, word choice, particles, or pronunciation. Do not complete or "
-        "tidy unfinished phrases. Transcribe what was said, not what was meant.\n"
-        "- romanized: the whole utterance in lower-case Hepburn romaji, with "
-        f"{support} words left as spoken (e.g. \"kagi o kudasai\", \"key... kudasai\").\n"
-        "- languages: ISO 639-1 codes of the languages actually heard, e.g. [\"ja\"] or "
-        "[\"en\", \"ja\"].\n"
-        "- confidence: 0 to 1, how sure you are that the transcript matches the audio.\n"
+        f"an adult beginner learning {name}; their own language has the locale code "
+        f"{support_locale}. Utterances are short: often a single word, a bare noun, a short "
+        "phrase, or a mix of both languages in one breath.",
+        "Transcribe the audio VERBATIM:",
+        "- Keep code-switching exactly as spoken, in the order spoken. Never translate.",
+        f"- Write every word spoken in {target.name} in that language's standard native script. "
+        "Write words spoken in the learner's own language in that language's normal spelling; "
+        "never transliterate them into the target script.",
+        "- Never correct grammar, word choice, word order, tones, or pronunciation. Do not "
+        "complete or tidy unfinished phrases. Transcribe what was said, not what was meant.",
+    ]
+    if target.romanization_system:
+        lines.append(
+            f"- romanized: the whole utterance with every {target.name} word in lower-case "
+            f"{target.romanization_system}, including the tone marks or diacritics that system "
+            "uses, and words from the learner's own language left as spoken."
+        )
+    lines += [
+        "- languages: ISO 639-1 codes of the languages actually heard, in the order heard.",
+        "- confidence: 0 to 1, how sure you are that the transcript matches the audio.",
         "- Never guess. If there is no clear human speech (silence, breathing, background "
-        "noise, or unintelligible sounds), return an empty transcript, empty romanized, "
-        "empty languages, and confidence 0."
-    )
+        "noise, or unintelligible sounds), return an empty transcript, empty languages, and "
+        "confidence 0.",
+    ]
+    return "\n".join(lines)
 
 
 class GeminiSTT:
@@ -217,13 +254,13 @@ class GeminiSTT:
         return self._client
 
     def transcribe(
-        self, audio: bytes, mime: str, *, target_locale: str, support_locale: str
+        self, audio: bytes, mime: str, *, target: LanguageHint, support_locale: str
     ) -> TranscriptionResult:
         from google.genai import types
 
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_json_schema=GEMINI_STT_SCHEMA,
+            response_json_schema=gemini_stt_schema(target),
             temperature=0,
             thinking_config=types.ThinkingConfig(
                 thinking_level=types.ThinkingLevel(self.thinking_level.upper())
@@ -232,7 +269,7 @@ class GeminiSTT:
         )
         contents = [
             types.Part.from_bytes(data=audio, mime_type=normalize_mime(mime)),
-            gemini_stt_prompt(target_locale=target_locale, support_locale=support_locale),
+            gemini_stt_prompt(target=target, support_locale=support_locale),
         ]
         errors: list[str] = []
         for model in self.models:
@@ -240,7 +277,7 @@ class GeminiSTT:
                 response = self.client.models.generate_content(
                     model=model, contents=contents, config=config
                 )
-                return self._parse(response.text or "")
+                return self._parse(response.text or "", target)
             except Exception as exc:
                 error = classify_exception(exc, f"gemini stt {model}")
                 if isinstance(error, SpeechTimeout):
@@ -248,7 +285,7 @@ class GeminiSTT:
                 errors.append(str(error))
         raise SpeechProviderError(" | ".join(errors))
 
-    def _parse(self, text: str) -> TranscriptionResult:
+    def _parse(self, text: str, target: LanguageHint) -> TranscriptionResult:
         try:
             payload = json.loads(text)
         except ValueError as exc:
@@ -256,12 +293,13 @@ class GeminiSTT:
         if not isinstance(payload, dict):
             raise SpeechProviderError("gemini stt returned a non-object")
         transcript = str(payload.get("transcript") or "").strip()
-        romanized = str(payload.get("romanized") or "").strip()
+        wants_romanized = bool(transcript and target.romanization_system)
+        romanized = str(payload.get("romanized") or "").strip() if wants_romanized else ""
         return TranscriptionResult(
             transcript=transcript,
-            romanized=(romanized or None) if transcript else None,
+            romanized=romanized or None,
             detected_languages=(
-                _languages(payload.get("languages") or [], transcript) if transcript else []
+                _languages(payload.get("languages") or [], transcript, target) if transcript else []
             ),
             confidence=_clamp01(payload.get("confidence")) if transcript else None,
             provider=self.name,
@@ -287,7 +325,7 @@ class STTService:
         self.providers = list(providers)
 
     def transcribe(
-        self, audio: bytes, mime: str, *, target_locale: str, support_locale: str
+        self, audio: bytes, mime: str, *, target: LanguageHint, support_locale: str
     ) -> TranscriptionResult:
         if is_empty_audio(audio, mime):
             return TranscriptionResult("", None, [], None, self.providers[0].name)
@@ -295,7 +333,7 @@ class STTService:
         for provider in self.providers:
             try:
                 result = provider.transcribe(
-                    audio, mime, target_locale=target_locale, support_locale=support_locale
+                    audio, mime, target=target, support_locale=support_locale
                 )
             except SpeechError as exc:
                 log.warning("STT provider %s failed: %s", provider.name, exc)
@@ -349,9 +387,9 @@ def default_service() -> STTService:
 
 
 def transcribe(
-    audio: bytes, mime: str, *, target_locale: str, support_locale: str
+    audio: bytes, mime: str, *, target: LanguageHint, support_locale: str
 ) -> TranscriptionResult:
     """Transcribe one learner attempt. Raises SpeechTimeout / SpeechProviderError."""
     return default_service().transcribe(
-        audio, mime, target_locale=target_locale, support_locale=support_locale
+        audio, mime, target=target, support_locale=support_locale
     )
