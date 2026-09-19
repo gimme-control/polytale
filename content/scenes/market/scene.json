@@ -1,9 +1,9 @@
 {
   "id": "market",
-  "name": "Night Market",
-  "tagline": "She was here. Where is she now?",
-  "intro": "The night market is a river of smoke, neon and elbows. One stall has a queue, a woman conducting it with a ladle like an orchestra, and hanging from the awning pole, a red scarf you would know anywhere.",
-  "setting": "A street-food stall in a loud, crowded night market, seen from where the player stands at the front of the stall. The vendor works behind a steaming counter facing the player. Laid out at the back of the stall, in plain view: a bowl of noodles, a plate of dumplings, a jar of chili oil, a bottle of beer, a glass of water, and, hanging from the awning pole, a red scarf that is clearly not for sale. The player carries a polaroid of Mei and whatever cash they have left. That is everything here: no rice, no skewers, no tea, no menu, no card reader, no phone, no other staff. Things happen physically: food or drink that is ordered is set down on the counter, the chili jar is pushed across when someone wants it spicy, the scarf can be taken down and handed over, cash changes hands over the counter.",
+  "name": "The Fan-Zone Stall",
+  "tagline": "She left something for you here.",
+  "intro": "The lane to the fan zone is a river of flags, smoke and elbows; the big screen glows over the rooftops and the crowd noise comes in waves. One stall has a queue, a woman conducting it with a ladle like a referee, and hanging from the awning pole, a team scarf you would know anywhere.",
+  "setting": "A street-food stall on the edge of the fan zone on World Cup final night, seen from where the player stands at the front of the stall. The big screen glows at the end of the lane; crowd noise, horns and drums come in waves, and the queue behind the player is impatient. The vendor works behind a steaming counter facing the player. Laid out at the back of the stall, in plain view: a bowl of noodles, a plate of dumplings, a jar of chili oil, a bottle of beer, a glass of water, a bundle of small hand flags she sells to fans, and, hanging from the awning pole, a team scarf that is clearly not for sale. Tucked behind the chili jar where a sharp eye can see it: one match ticket. The player carries a polaroid of Mei in that same scarf, and whatever cash they have left. That is everything here: no rice, no skewers, no tea, no menu, no card reader, no phone, no other staff. Things happen physically: food or drink that is ordered is set down on the counter, the chili jar is pushed across when someone wants it spicy, a flag that is bought is handed over, the scarf can be taken down and handed over, the ticket can be produced and pressed into a hand, cash changes hands over the counter.",
   "art": {
     "background": "art/bg.webp",
     "cover": "art/cover.webp",
@@ -21,7 +21,7 @@
       "ja-JP": "おかみさん"
     },
     "role": "street-food vendor",
-    "character": "Late forties, has cooked at this stall every night for fifteen years and can run it with her eyes shut. Loud, quick, funny, entirely unselfconscious; talks with her hands and a ladle. Speaks nothing but the local language and has never needed anything else: hungry people point, she feeds them. Proud of her food, pushy about it, and soft as butter underneath.",
+    "character": "Late forties, has cooked at this stall every night for fifteen years and doubles her prices in her head every time there is a final (then feels bad and mostly does not). Loud, quick, funny, entirely unselfconscious; talks with her hands and a ladle, keeps half an ear on the crowd noise and will stop mid-sentence to listen to a roar. Speaks nothing but the local language and has never needed anything else: hungry people point, she feeds them. Proud of her food, pushy about it, and soft as butter underneath.",
     "voice": {
       "gemini_voice": "Gacrux",
       "elevenlabs_voice_id": "",
@@ -31,8 +31,8 @@
       "x": 0.617,
       "y": 0.37
     },
-    "wants": "To feed people and to win. Everybody who stands at her stall eats; gossip is for customers. She loves a haggle: she names the full price, acts wounded at a counter-offer, comes down a little for anyone with the nerve to push, and will not go under her floor (she says so with theatre). She dares every foreigner to take it spicy; nobody ever has, and she would adore whoever did (they will cry; she will be thrilled). She warms to people who eat with appetite and say it is good.",
-    "secrets": "Mei ate here an hour ago: dumplings, extra chili, crying a little and blaming the chili. She told Lin her friend never came and that she was taking the last train home: the station, platform 2. She forgot her red scarf; Lin hung it on the pole where Mei would see it if she came back. Lin will not give a girl's scarf, or where she went, to some random foreigner. They must prove they are the friend (the photo does it), AND earn it: take the spicy dare, or be a proper paying customer she has warmed to. Once she believes them she is all in: presses the scarf on them to carry to Mei, points the way to the station, shoos them off.",
+    "wants": "To feed people and to win. Everybody who stands at her stall eats; favours are for customers. She loves a haggle: she names the full price, acts wounded at a counter-offer, comes down a little for anyone with the nerve to push, and will not go under her floor (she says so with theatre). She dares every foreigner to take it spicy; nobody ever has, and she would adore whoever did (they will cry; she will be thrilled). She warms to people who eat with appetite, say it is good, or buy a little flag and wave it like they mean it.",
+    "secrets": "Mei ate here an hour ago, as before every big match: dumplings, extra chili, for luck. She was rushing and fretting about a friend whose flight was late. She forgot her team scarf, and she left Lin a match ticket on purpose: 'if a lost foreigner turns up with my photo, give them this. Gate 2, under the big screen.' A ticket for the final is worth a month of dumplings and Lin will NOT hand it to some random foreigner: they must prove they know Mei (the photo does it), AND be someone she likes: take the spicy dare on food they bought, or be a proper paying customer she has warmed to. Once she believes them she is all in: presses the ticket and the scarf on them, points at the glow of the big screen, gate 2, and shoos them off before kickoff.",
     "trust": 0
   },
   "zones": [
@@ -162,6 +162,30 @@
       ]
     },
     {
+      "id": "flag",
+      "item_id": "flag",
+      "art": "art/obj_flag.png",
+      "zone": "display",
+      "price": 10,
+      "price_floor": 6,
+      "actions": [
+        "point",
+        "take"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.6,
+          "y": 0.58,
+          "h": 0.16
+        },
+        "counter": {
+          "x": 0.3,
+          "y": 0.93,
+          "h": 0.22
+        }
+      }
+    },
+    {
       "id": "scarf",
       "item_id": "scarf",
       "art": "art/obj_scarf.png",
@@ -180,6 +204,28 @@
           "x": 0.22,
           "y": 0.93,
           "h": 0.2
+        }
+      }
+    },
+    {
+      "id": "ticket",
+      "item_id": "ticket",
+      "art": "art/obj_ticket.png",
+      "zone": "display",
+      "actions": [
+        "point",
+        "take"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.54,
+          "y": 0.62,
+          "h": 0.06
+        },
+        "counter": {
+          "x": 0.44,
+          "y": 0.95,
+          "h": 0.12
         }
       }
     },
@@ -234,11 +280,11 @@
     "want",
     "how_much",
     "money",
-    "beer",
-    "noodles",
     "dumplings",
     "spicy",
     "scarf",
+    "ticket",
+    "flag",
     "too_expensive"
   ],
   "goals": [
@@ -250,16 +296,18 @@
       }
     },
     {
-      "id": "find",
-      "label": "Find out where Mei is now",
+      "id": "ticket",
+      "label": "Get your ticket to the final",
       "when": {
-        "clue": "platform"
+        "clue": "gate"
       }
     }
   ],
   "travel_minutes": 9,
   "support_words": [
     "hello",
+    "noodles",
+    "beer",
     "water",
     "this",
     "yes",
@@ -269,16 +317,20 @@
     "delicious",
     "cheaper",
     "photo",
-    "station",
-    "platform",
-    "train",
+    "match",
+    "go_team",
+    "goal",
+    "gate",
     "number_two",
+    "big_screen",
+    "fan_zone",
     "she",
     "seen",
     "left",
     "one_more",
     "kuai",
     "five",
+    "six",
     "eight",
     "ten",
     "twelve",
@@ -287,7 +339,7 @@
   "flags": [
     {
       "id": "scarf_noticed",
-      "when": "the player has pointed at, asked about or reached for the red scarf"
+      "when": "the player has pointed at, asked about or reached for the team scarf"
     },
     {
       "id": "photo_shown_lin",
@@ -302,16 +354,24 @@
       ]
     },
     {
-      "id": "scarf_taken",
-      "when": "the vendor has given the player Mei's scarf to carry to her (the scarf is in the player's inventory)"
+      "id": "flag_bought",
+      "when": "the player has bought one of her little flags (and, in the narration, waves it)",
+      "requires_paid": [
+        "flag"
+      ]
+    },
+    {
+      "id": "ticket_grabbed",
+      "when": "the player has tried to take the ticket or the scarf without being given it (she blocks them; this costs trust)"
     }
   ],
   "clues": [
     {
       "id": "scarf",
       "title": "Mei's scarf",
-      "text": "The red scarf on the stall is Mei's. She ate here tonight, and left in a hurry.",
+      "text": "The team scarf on the stall is Mei's. She ate here tonight, in a hurry, before going in.",
       "gm_note": "She looks from the scarf to the player and back; if shown the photo she lights up: that girl, yes, an hour ago.",
+      "key_items": [],
       "reveal_when": [
         {
           "flags": [
@@ -326,10 +386,15 @@
       ]
     },
     {
-      "id": "platform",
-      "title": "Platform 2",
-      "text": "Mei is taking the last train home. The station, platform 2. Run.",
-      "gm_note": "She says it big: station, train, number two, points down the street with the ladle, presses the scarf on them and shoos them off. This ends the act.",
+      "id": "gate",
+      "title": "Gate 2",
+      "text": "Mei left your ticket with Lin. Gate 2, under the big screen. Run.",
+      "gm_note": "She produces the ticket with ceremony and presses it and the scarf into their hands (move ticket and scarf to inventory), says it big: gate, number two, the big screen, points down the lane with the ladle and shoos them off. This ends the act.",
+      "key_items": [
+        "gate",
+        "number_two",
+        "big_screen"
+      ],
       "reveal_when": [
         {
           "flags": [
@@ -350,12 +415,6 @@
           "paid_at_least": 10,
           "trust_at_least": 1
         }
-      ],
-      "key_items": [
-        "platform",
-        "station",
-        "number_two",
-        "train"
       ]
     }
   ]

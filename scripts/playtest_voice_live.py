@@ -1,10 +1,10 @@
-"""Live end-to-end playtest of "The Last Train" over HTTP (real GM, phrasebook, STT, TTS).
+"""Live end-to-end playtest of the story ("Kickoff") over HTTP (real GM, phrasebook, STT, TTS).
 
 Plays whole journeys the way different players would and prints each as a readable transcript
 (narration, lines, ledgers), so a human can judge whether it is FUN:
   payer     settles Mei's tab, haggles, takes the spicy dare          (voice + verbs + phrasebook)
-  charmer   pays for nothing he does not drink: baijiu, a toast, manners; eats politely
-  tourist   immersion mode, orders the wrong things, dithers, runs low on cash and time
+  charmer   football and manners: admires the ball, cheers the goal, toasts; buys a flag
+  tourist   immersion mode, grabs the ball, orders the wrong things, dithers, runs out of time
 The GM is a live model, so the driver adapts and asserts on state and payload shape only.
 
 Needs the API running (bash run.sh --quiet, or uvicorn server.app:app --port 8100).
@@ -175,32 +175,33 @@ def payer(http: httpx.Client) -> None:
     p.play([("verb", "show", "photo"), ("verb", "point", "scarf"),
             ("ask", "how much are the dumplings?"), ("ask", "too expensive!"),
             ("ask", "ok, dumplings please"), ("verb", "eat", "chili"), ("speak", "xiexie"),
-            ("ask", "where is she?"), ("ask", "where is my friend now?")])
+            ("ask", "where is she?"), ("ask", "do you have my ticket?")])
     p.wrap()
 
 
 def charmer(http: httpx.Client) -> None:
     p = Player(http, "charmer", persona="unhinged")
     p.enter()
-    p.play([("type", "ni hao"), ("ask", "what is good here?"), ("verb", "point", "baijiu"),
-            ("ask", "I want that one"), ("ask", "cheers!"), ("verb", "drink", "baijiu"),
-            ("speak", "xiexie"), ("verb", "show", "photo"), ("ask", "she is my friend"),
-            ("ask", "where is she?"), ("ask", "please, I am worried about her"),
-            ("verb", "pay", "tab")])
+    p.play([("type", "ni hao"), ("verb", "point", "football"), ("ask", "nice football!"),
+            ("verb", "point", "tv"), ("ask", "goal!"), ("ask", "I want that one"),
+            ("ask", "cheers!"), ("verb", "drink", "baijiu"), ("speak", "xiexie"),
+            ("verb", "show", "photo"), ("ask", "she is my friend"), ("ask", "where is she?"),
+            ("ask", "please, I am worried about her"), ("verb", "pay", "tab")])
     T.check("charmer: act 1 done", p.complete, p.last.get("game"))
     p.enter()
     p.play([("type", "ni hao"), ("ask", "I want noodles"), ("ask", "a bit cheaper?"),
             ("ask", "ok"), ("verb", "eat", "noodles"), ("ask", "it's delicious!"),
+            ("ask", "how much is the flag?"), ("ask", "ok, one flag"),
             ("verb", "show", "photo"), ("ask", "have you seen my friend?"),
-            ("verb", "point", "scarf"), ("ask", "where is she?"), ("verb", "eat", "chili"),
-            ("ask", "where is my friend now?")])
+            ("verb", "point", "scarf"), ("ask", "do you have my ticket?"),
+            ("verb", "eat", "chili"), ("ask", "where is my friend now?")])
     p.wrap()
 
 
 def tourist(http: httpx.Client) -> None:
     p = Player(http, "tourist", difficulty="immersion", persona="brisk")
     p.enter()
-    p.play([("type", "hello? do you speak English?"), ("verb", "point", "menu"),
+    p.play([("type", "hello? do you speak English?"), ("verb", "take", "football"),
             ("speak", "wo_yao_pijiu"), ("verb", "drink", "beer"), ("verb", "point", "tea"),
             ("ask", "I want tea"), ("verb", "show", "photo"), ("type", "Mei? Mei?"),
             ("ask", "where is she?"), ("verb", "pay", "tab"), ("ask", "sorry, no money"),
@@ -208,7 +209,7 @@ def tourist(http: httpx.Client) -> None:
             ("ask", "where is she?")])
     if p.complete and not p.last.get("ending"):
         p.enter()
-        p.play([("verb", "point", "scarf"), ("verb", "take", "scarf"), ("verb", "show", "photo"),
+        p.play([("verb", "point", "scarf"), ("verb", "take", "ticket"), ("verb", "show", "photo"),
                 ("ask", "where is she?"), ("ask", "I have no money"), ("verb", "eat", "chili"),
                 ("ask", "water please"), ("ask", "where is my friend?"),
                 ("ask", "please, where?"), ("ask", "thank you")])

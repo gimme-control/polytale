@@ -1,9 +1,9 @@
 {
   "id": "bar",
   "name": "The Corner Bar",
-  "tagline": "Someone here knows where Mei went.",
-  "intro": "22:40. The Corner Bar: the name Mei texted you last week. Small, dim, nearly empty. The man behind the counter looks up from a glass he has clearly been polishing for a while. You have her photo, ¥60, and no words at all.",
-  "setting": "A small, dim neighbourhood bar late at night, seen from a stool at the counter. The bartender stands behind the counter facing the player. On the back shelf behind him, in plain view: a bottle of beer, a glass of water, a small teapot with a cup, a shot glass of the house baijiu he infuses himself, and a closed menu booklet. Clipped behind the counter where a customer can see it: one unpaid tab slip (Mei's: ¥40). The player carries a polaroid of Mei and some cash. That is everything here: no food, no wine, no cocktails, no card reader, no phone to borrow, no other staff. It is quiet; rain on the window, two regulars murmuring somewhere behind the player. Things happen physically: what is ordered is set on the counter, the photo can be laid on the counter or handed over, the tab slip can be unclipped and put down, cash changes hands over the counter.",
+  "tagline": "Match night. Someone here knows where Mei went.",
+  "intro": "19:45, final night. The Corner Bar: the name Mei texted you last week. Scarves and pennants on every wall, the pre-match build-up glowing on the TV, and a man behind the counter polishing a glass like it owes him money. You have her photo, ¥60, and no words at all.",
+  "setting": "A small neighbourhood bar on World Cup final night, seen from a stool at the counter. Team scarves and pennants cover the walls; most of the regulars have already left for the fan zone, a few nervous ones remain. A wall TV shows the pre-match build-up: the empty pitch, pundits, and every few minutes a replay of a famous goal that makes the whole bar shout. The bartender stands behind the counter facing the player. On the back shelf behind him, in plain view: a bottle of beer, a glass of water, a small teapot with a cup, a shot glass of the house baijiu he infuses himself, a closed menu booklet, and, on its own little stand in pride of place, his prized match football. Clipped behind the counter where a customer can see it: one unpaid tab slip (Mei's: ¥40). The player carries a polaroid of Mei in her team scarf, and some cash. That is everything here: no food, no wine, no cocktails, no card reader, no phone to borrow, no other staff. Things happen physically: what is ordered is set on the counter, the photo can be laid on the counter or handed over, the tab slip can be unclipped and put down, the football can (if he ever allows it) be lifted off its stand, cash changes hands over the counter, and the TV can always be pointed at.",
   "art": {
     "background": "art/bg.webp",
     "cover": "art/cover.webp",
@@ -21,7 +21,7 @@
       "ja-JP": "マスター"
     },
     "role": "bartender",
-    "character": "Mid-fifties, has run this bar alone for twenty years. Dry, unhurried, observant; more at ease polishing a glass than making small talk, but with a deadpan sense of humour that comes out once he decides he likes someone. Has never left the country and speaks nothing but the local language; good at reading a pointed finger and a hopeful face. Protective of his regulars the way other men are of family.",
+    "character": "Mid-fifties, has run this bar alone for twenty years and has watched every final since he was nine on whatever screen he could find. Dry, unhurried, observant, with a deadpan sense of humour that comes out once he decides he likes someone. A football tragic: superstitious (same shirt under the apron every match day, nobody touches the ball), tense tonight and pretending not to be. Has never left the country and speaks nothing but the local language; good at reading a pointed finger and a hopeful face. Protective of his regulars the way other men are of family.",
     "voice": {
       "gemini_voice": "Charon",
       "elevenlabs_voice_id": "",
@@ -31,8 +31,8 @@
       "x": 0.5,
       "y": 0.262
     },
-    "wants": "A quiet night, a settled till, and to know his regulars are safe. He is sore about one unpaid tab tonight (not the money: the worry). He is privately proud of the house baijiu he infuses himself and which nobody ever orders; a customer who orders it, toasts with him and does not wince has a friend for life. He likes manners: a greeting, a thank-you, paying without fuss. He dislikes being shouted at in a foreign language or having a photo waved in his face before anyone has even ordered.",
-    "secrets": "He knows Mei well: she has come in every Friday for two years. Tonight she sat at the end of the counter for two hours watching the door, waiting for a friend who never showed; around ten she left upset WITHOUT paying (¥40, the first time ever; he is worried, not angry). She said she was going to eat at Lin's stall in the night market, which is what she does when she is down. He does not hand a young woman's whereabouts to a stranger holding her photo: for all he knows this is the person who stood her up, or worse. He opens up once the stranger has shown they are decent: settling her tab says it fastest; being a good customer and good company says it too; sharing his baijiu says it his favourite way.",
+    "wants": "His team to win, a settled till, and his regulars safe. He is sore about one unpaid tab tonight (not the money: the hurry she left in). He is privately proud of two things: the house baijiu he infuses himself, which nobody orders, and the match football on the shelf, caught in the stands at a final thirty years ago. A customer who admires the ball from a respectful distance, or cheers when the goal replays on the TV, or toasts his team with him, has a friend for life; a customer who GRABS the ball is dead to him for at least ten minutes. He likes manners: a greeting, a thank-you, paying without fuss. He dislikes being shouted at in a foreign language or having a photo waved in his face before anyone has even ordered.",
+    "secrets": "He knows Mei well: she has watched every big match here for two years. Tonight she sat at the end of the counter from six, watching the door for a friend who never showed; around eight she swore, grabbed her bag and ran for the fan zone to hold their spots, WITHOUT paying (¥40, the first time ever). She said she would stop at Lin's stall on the edge of the fan zone first, as she always does before a big match. He does not hand a young woman's whereabouts to a stranger holding her photo. He opens up once the stranger has shown they are decent: settling her tab says it fastest; being good company on match night says it too (a toast to his team, a cheer at the replayed goal, respect for the ball); sharing his baijiu says it his favourite way.",
     "trust": 0
   },
   "zones": [
@@ -186,6 +186,44 @@
       }
     },
     {
+      "id": "football",
+      "item_id": "football",
+      "art": "art/obj_football.png",
+      "zone": "display",
+      "actions": [
+        "point",
+        "take"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.5,
+          "y": 0.5,
+          "h": 0.12
+        },
+        "counter": {
+          "x": 0.62,
+          "y": 0.9,
+          "h": 0.2
+        }
+      }
+    },
+    {
+      "id": "tv",
+      "item_id": "tv",
+      "art": "art/obj_tv.png",
+      "zone": "display",
+      "actions": [
+        "point"
+      ],
+      "positions": {
+        "display": {
+          "x": 0.84,
+          "y": 0.3,
+          "h": 0.22
+        }
+      }
+    },
+    {
       "id": "photo",
       "item_id": "friend",
       "art": "art/obj_photo.png",
@@ -236,11 +274,12 @@
     "where",
     "want",
     "beer",
-    "tea",
     "baijiu",
     "how_much",
     "money",
-    "cheers"
+    "cheers",
+    "football",
+    "goal"
   ],
   "goals": [
     {
@@ -254,12 +293,13 @@
       "id": "trail",
       "label": "Find out where Mei went",
       "when": {
-        "clue": "market"
+        "clue": "stall"
       }
     }
   ],
   "support_words": [
     "water",
+    "tea",
     "menu",
     "this",
     "yes",
@@ -267,7 +307,10 @@
     "no_want",
     "photo",
     "tab",
-    "night_market",
+    "tv",
+    "match",
+    "go_team",
+    "fan_zone",
     "she",
     "seen",
     "left",
@@ -276,7 +319,7 @@
     "five",
     "fifteen",
     "twenty",
-    "thirty"
+    "forty"
   ],
   "flags": [
     {
@@ -295,6 +338,14 @@
       "when": "the player has drunk the house baijiu"
     },
     {
+      "id": "cheered",
+      "when": "the player has joined in: cheered the replayed goal, toasted his team, or admired the match ball from a respectful distance (pointing at it counts; grabbing it does not)"
+    },
+    {
+      "id": "ball_grabbed",
+      "when": "the player has tried to take the match football off its stand (he takes it straight back; this costs trust)"
+    },
+    {
       "id": "tipsy",
       "when": "the player has drunk a beer or a baijiu; from then on the narration is a little looser and braver"
     }
@@ -303,8 +354,9 @@
     {
       "id": "regular",
       "title": "He knows her",
-      "text": "The bartender recognised Mei's photo at once. She is a regular here. He is still deciding whether you are good news.",
+      "text": "The bartender recognised Mei's photo at once. She watches every big match here. He is still deciding whether you are good news.",
       "gm_note": "Comes out the moment he sees the photo: a flicker he cannot hide, 'your friend?'. He confirms he knows her; not yet where she is.",
+      "key_items": [],
       "reveal_when": [
         {
           "flags": [
@@ -316,8 +368,9 @@
     {
       "id": "waited",
       "title": "She waited for you",
-      "text": "Mei sat at this counter for two hours tonight, watching the door. Then she left, upset, without paying.",
+      "text": "Mei sat at this counter for two hours tonight, watching the door. Then she ran for the fan zone, without paying.",
       "gm_note": "He nods at the empty stool at the end of the counter, the clock, the tab slip.",
+      "key_items": [],
       "reveal_when": [
         {
           "flags": [
@@ -333,10 +386,13 @@
       ]
     },
     {
-      "id": "market",
-      "title": "The night market",
-      "text": "Mei went to eat at Lin's stall in the night market: it is what she does when she is upset. Ten minutes on foot.",
-      "gm_note": "He says where she went (night market) and points the way out of the door. This ends the act.",
+      "id": "stall",
+      "title": "Lin's stall",
+      "text": "Mei went to the fan zone to hold your spots, and she always stops at Lin's food stall on the edge of it first. Ten minutes on foot.",
+      "gm_note": "He says where she went (the fan zone, Lin's stall), points the way out of the door, and tells them to run. This ends the act.",
+      "key_items": [
+        "fan_zone"
+      ],
       "reveal_when": [
         {
           "flags": [
@@ -356,10 +412,14 @@
             "drank_baijiu"
           ],
           "trust_at_least": 1
+        },
+        {
+          "flags": [
+            "photo_shown",
+            "cheered"
+          ],
+          "trust_at_least": 1
         }
-      ],
-      "key_items": [
-        "night_market"
       ]
     }
   ]

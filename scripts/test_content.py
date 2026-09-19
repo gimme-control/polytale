@@ -42,15 +42,24 @@ def test_shipped_content() -> None:
     bar, market = CONTENT.scene("bar"), CONTENT.scene("market")
     T.check("bar objects are the fixed art set",
             [o.id for o in bar.objects]
-            == ["beer", "water", "tea", "baijiu", "menu", "tab", "photo", "money"])
+            == ["beer", "water", "tea", "baijiu", "menu", "tab", "football", "tv", "photo",
+                "money"])
     T.check("market objects are the fixed art set",
             [o.id for o in market.objects]
-            == ["noodles", "dumplings", "chili", "beer", "water", "scarf", "photo", "money"])
+            == ["noodles", "dumplings", "chili", "beer", "water", "flag", "scarf", "ticket",
+                "photo", "money"])
     T.check("chili teaches the 'spicy' item", market.object("chili").item_id == "spicy")  # type: ignore[union-attr]
-    T.check("8-12 targets per act", (len(bar.targets), len(market.targets)) == (11, 12))
-    T.check("market reuses >= 5 bar targets incl. friend, where, beer, money",
+    T.check("8-12 targets per act", (len(bar.targets), len(market.targets)) == (12, 12))
+    T.check("act 2 reuses >= 5 act 1 targets incl. friend, where, want, money",
             len(set(bar.targets) & set(market.targets)) >= 5
-            and {"friend", "where", "beer", "money"} <= set(bar.targets) & set(market.targets))
+            and {"friend", "where", "want", "money"} <= set(bar.targets) & set(market.targets))
+    T.check("the theme's showable football words are targets",
+            {"football", "goal"} <= set(bar.targets) and {"ticket", "flag", "scarf"} <= set(
+                market.targets))
+    T.check("no official tournament branding anywhere in the content",
+            not any(word in (CONTENT.journey.model_dump_json() + bar.model_dump_json()
+                             + market.model_dump_json()).lower()
+                    for word in ("fifa", "uefa", "messi", "ronaldo")))
     T.check("money and the photo start in the inventory; drinks start on display",
             bar.object("money").zone == "inventory"  # type: ignore[union-attr]
             and bar.object("photo").zone == "inventory"  # type: ignore[union-attr]
@@ -75,22 +84,30 @@ def test_shipped_content() -> None:
     trail = bar.goal("trail")
     assert trail is not None
     T.check("story goals evaluate against clues and flags",
-            not trail.when.holds({}, [], []) and trail.when.holds({}, ["market"], [])
+            not trail.when.holds({}, [], []) and trail.when.holds({}, ["stall"], [])
             and bar.goal("ask").when.holds({}, [], ["photo_shown"]))  # type: ignore[union-attr]
     story = CONTENT.journey
     T.check("the story file: title, premise, wallet, clock, endings with a fallback",
-            story.title == "The Last Train" and story.wallet == 60
+            story.title == "Kickoff" and story.wallet == 60
             and story.clock.total_minutes == 75 and story.clock.minutes_per_turn == 3
-            and [e.id for e in story.endings] == ["reunited", "seconds", "scarf", "late"]
+            and story.clock.label == "Kickoff" and story.art == "title.webp"
+            and [e.id for e in story.endings] == ["kickoff", "late", "outside"]
             and story.endings[-1].when.model_dump(exclude_defaults=True) == {})
     T.check("each act offers more than one way to its key clue",
-            len(bar.clue("market").reveal_when) >= 2  # type: ignore[union-attr]
-            and len(market.clue("platform").reveal_when) >= 2)  # type: ignore[union-attr]
+            len(bar.clue("stall").reveal_when) >= 2  # type: ignore[union-attr]
+            and len(market.clue("gate").reveal_when) >= 2  # type: ignore[union-attr]
+            and "fan_zone" in bar.clue("stall").key_items)  # type: ignore[union-attr]
     T.check("characters have wants, secrets and a starting trust",
             all(s.npc.wants and s.npc.secrets and s.npc.trust == 0 for s in (bar, market)))
     T.check("market food can be haggled; the bar's prices are fixed",
             market.object("dumplings").price_floor == 8  # type: ignore[union-attr]
             and all(o.price_floor is None for o in bar.objects))
+    T.check("the match ball can be grabbed (he will mind); the TV can only be pointed at",
+            bar.object("football").actions == ["point", "take"]  # type: ignore[union-attr]
+            and bar.object("tv").actions == ["point"]  # type: ignore[union-attr]
+            and list(bar.object("tv").positions) == ["display"]  # type: ignore[union-attr]
+            and market.object("ticket").zone == "display"  # type: ignore[union-attr]
+            and market.object("flag").price_floor == 6)  # type: ignore[union-attr]
     T.check("objects carry verbs; the photo can be shown",
             "show" in bar.object("photo").actions  # type: ignore[union-attr]
             and "pay" in bar.object("tab").actions  # type: ignore[union-attr]
@@ -246,13 +263,17 @@ def test_art_paths() -> None:
             T.check(f"escape refused: {bad!r}", True)
     expected = {f"{s.id}/{rel}" for s in CONTENT.scenes.values() for rel in s.art_paths
                 if not resolve_art_path(s, rel).is_file()}
+    last = CONTENT.scene(CONTENT.journey.scenes[-1])
+    expected |= {f"{last.id}/{e.art}" for e in CONTENT.journey.endings
+                 if e.art and not resolve_art_path(last, e.art).is_file()}
     T.check("missing_art lists exactly the absent files", set(missing_art(CONTENT)) == expected)
     T.check("art paths follow the agreed names",
             set(bar.art_paths) == {"art/bg.webp", "art/cover.webp", "art/bg_pleased.webp",
                                    "art/bg_puzzled.webp", "art/obj_beer.png",
                                    "art/obj_water.png", "art/obj_tea.png", "art/obj_menu.png",
                                    "art/obj_money.png", "art/obj_baijiu.png", "art/obj_tab.png",
-                                   "art/obj_photo.png"})
+                                   "art/obj_photo.png", "art/obj_football.png",
+                                   "art/obj_tv.png"})
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "content"
         shutil.copytree(CONTENT_ROOT, root, ignore=shutil.ignore_patterns("*.png", "*.webp"))

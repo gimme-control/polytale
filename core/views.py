@@ -124,6 +124,7 @@ class StoryView(BaseModel):
     title: str
     tagline: str
     premise: str
+    art_url: str | None = None  # title art
 
 
 class PublicState(BaseModel):
@@ -149,7 +150,8 @@ class PublicState(BaseModel):
 
 def story_view(content: Content) -> StoryView:
     story = content.journey
-    return StoryView(title=story.title, tagline=story.tagline, premise=story.premise)
+    return StoryView(title=story.title, tagline=story.tagline, premise=story.premise,
+                     art_url="/api/story/art" if story.art else None)
 
 
 def game_view(journey: Journey, content: Content) -> GameView:

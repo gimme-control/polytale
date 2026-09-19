@@ -123,7 +123,8 @@ def test_catalog() -> None:
     T.check("catalog personas", len(cat["personas"]) == 3 and "prompt" not in cat["personas"][0])
     T.check("catalog carries the story, never the GM brief",
             cat["story"] == {"title": CONTENT.journey.title, "tagline": CONTENT.journey.tagline,
-                             "premise": CONTENT.journey.premise}
+                             "premise": CONTENT.journey.premise, "art_url": "/api/story/art"}
+            and client.get("/api/story/art").status_code in (200, 404)
             and "gm_brief" not in json.dumps(cat))
     r = client.get(cat["scenes"][0]["cover_url"])
     T.check("cover art served", r.status_code == 200 and r.headers["content-type"].startswith(
@@ -178,7 +179,7 @@ def test_journey() -> None:
     T.check("turn payload: narration + game, no stage_direction, no intent hint",
             opening["narration"] and "stage_direction" not in opening
             and "intent_hint" not in json.dumps(opening) and opening["ending"] is None
-            and opening["game"]["clock"]["time"] == "22:40")
+            and opening["game"]["clock"]["time"] == "19:45")
     state = client.get(f"/api/journeys/{jid}", headers=hdr).json()
     T.check("scene view: verbs with labels, no item text or GM secrets",
             {o["id"]: [a["id"] for a in o["actions"]] for o in state["scene"]["objects"]}[
@@ -311,13 +312,13 @@ def test_journey() -> None:
     FAKE.script = [reply(call("pay", amount=40, for_object_ids=["tab"]),
                          call("set_flag", flag="tab_paid"),
                          call("adjust_trust", delta=1, reason="paid her tab"),
-                         call("reveal_clue", clue_id="market"),
-                         say(lexicon_line(LANG, ["she", "night_market"]), mood="pleased"))]
+                         call("reveal_clue", clue_id="stall"),
+                         say(lexicon_line(LANG, ["she", "fan_zone"]), mood="pleased"))]
     res = client.post(f"/api/journeys/{jid}/act",
                       json={"tap_object_id": "tab", "action_id": "pay"}, headers=hdr).json()
     T.check("paying the tab: wallet, trust, clues, act complete, story not over",
             res["game"]["wallet"] == 20 and res["game"]["trust"] == 1
-            and [c["id"] for c in res["game"]["clues"]] == ["regular", "market"]
+            and [c["id"] for c in res["game"]["clues"]] == ["regular", "stall"]
             and res["scene_complete"] is True and res["ending"] is None
             and res["summary"]["next_scene"]["id"] == "market", res.get("game"))
     where = next(i for i in res["summary"]["items"] if i["item_id"] == "where")
@@ -346,12 +347,12 @@ def test_journey() -> None:
                          call("pay", amount=12, for_object_ids=["dumplings"]),
                          call("set_flag", flag="dare_taken"),
                          call("reveal_clue", clue_id="scarf"),
-                         call("reveal_clue", clue_id="platform"),
-                         say(lexicon_line(LANG, ["station", "platform"]), mood="pleased"))]
+                         call("reveal_clue", clue_id="gate"),
+                         say(lexicon_line(LANG, ["gate", "big_screen"]), mood="pleased"))]
     res = client.post(f"/api/journeys/{jid}/act",
                       json={"tap_object_id": "photo", "action_id": "show"}, headers=hdr).json()
     T.check("last act done → the ending arrives on that turn, with art and stats",
-            res["scene_complete"] is True and res["ending"]["id"] == "reunited"
+            res["scene_complete"] is True and res["ending"]["id"] == "kickoff"
             and res["ending"]["art_url"].startswith("/api/scenes/market/art/")
             and set(res["ending"]["stats"]) == {"minutes_left", "wallet", "clues",
                                                 "words_mastered", "words_shaky"}
@@ -359,7 +360,7 @@ def test_journey() -> None:
     T.check("ending art is served (when the art agent has delivered it) or 404s cleanly",
             client.get(res["ending"]["art_url"]).status_code in (200, 404))
     T.check("public state keeps the ending",
-            client.get(f"/api/journeys/{jid}", headers=hdr).json()["ending"]["id"] == "reunited")
+            client.get(f"/api/journeys/{jid}", headers=hdr).json()["ending"]["id"] == "kickoff")
     T.check("no further scene after the ending: 409",
             client.post(f"/api/journeys/{jid}/scene", json={}, headers=hdr).status_code == 409)
     T.check("the phrasebook still answers after the ending", client.post(
@@ -383,7 +384,7 @@ def test_finish() -> None:
     r = client.post(f"/api/journeys/{jid}/finish", headers=hdr)
     T.check("finishing the last act resolves the fallback ending",
             r.status_code == 200 and client.get(
-                f"/api/journeys/{jid}", headers=hdr).json()["ending"]["id"] == "late")
+                f"/api/journeys/{jid}", headers=hdr).json()["ending"]["id"] == "outside")
 
 
 def test_transcribe_edges() -> None:

@@ -88,7 +88,7 @@ def test_ja_offline_loop() -> None:
     journey, market = market_by_dare(journey, "ja-JP")
     T.check("ja-JP: the scripted story plays through both acts to an ending",
             bar[-1].scene_complete and market[-1].ending is not None
-            and market[-1].ending.id == "reunited" and journey.game.wallet == 12)
+            and market[-1].ending.id == "kickoff" and journey.game.wallet == 12)
     T.check("ja-JP: lines are built from the ja lexicon with its romanization",
             bar[0].lines[1].text == ja.items["beer"].text
             and bar[0].lines[1].romanization == ja.items["beer"].roman
@@ -123,7 +123,7 @@ def test_language_without_romanization() -> None:
     T.check("no romanization: lines have empty romanization and spaced text",
             all(line.romanization == "" and all(s.r == "" for s in line.segments)
                 for r in results for line in r.lines)
-            and results[3].lines[0].text == "wshe wnightmarket")
+            and results[3].lines[0].text == "wshe wfanzone")
     prompt = build_system_prompt(content, content.scene("bar"), content.language("xx-XX"))
     T.check("no romanization: the prompt does not promise one",
             "subtitles with" not in prompt and "`wbeer`" in prompt)

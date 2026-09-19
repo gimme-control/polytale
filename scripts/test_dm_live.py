@@ -3,6 +3,7 @@
   a. a zero-beginner who leans on the phrasebook and verbs reaches a good ending in time
   b. a rude, English-only player still reaches an ending (fail forward), with low trust
   c. haggling works and respects the floor
+  h. football agency: grabbing his match ball costs goodwill, cheering with him earns it
   d. clue gating: asked directly, the GM cannot say where Mei went before it is earned
   e. difficulty: story narration carries the gist, immersion does not (printed; shape asserted)
   f. the v2 adversarial learner still holds
@@ -173,22 +174,24 @@ def scenario_a() -> None:
     play_moves(p, [verb("show", "photo"), ("ask", "where is she?"), verb("pay", "tab"),
                    ("ask", "where did she go?"), ("ask", "please, she is my friend"),
                    verb("drink", "baijiu"), ("ask", "where is my friend?")], limit=9)
-    T.check(f"{tag}: act 1 done: the trail leads to the night market",
-            p.run.complete and "market" in p.journey.game.clues, p.journey.game.clues)
+    T.check(f"{tag}: act 1 done: the trail leads to Lin's stall by the fan zone",
+            p.run.complete and "stall" in p.journey.game.clues, p.journey.game.clues)
     T.check(f"{tag}: act 1 took a sane number of turns", len(p.results) <= 9, len(p.results))
     p.next_act()
-    p.step("(arrives at the market)", None)
+    p.step("(arrives at the stall)", None)
     play_moves(p, [verb("show", "photo"), verb("point", "scarf"),
                    ("ask", "how much are the dumplings?"), ("ask", "too expensive!"),
                    ("ask", "ok, I want dumplings"), verb("eat", "chili"),
-                   ("ask", "where is she?"), ("ask", "where is my friend now?"),
-                   verb("pay", "money"), ("ask", "please, where is she?")], limit=12)
+                   ("ask", "where is she?"), ("ask", "do you have my ticket?"),
+                   verb("pay", "money"), ("ask", "please, where is my friend?")], limit=12)
     ending = p.results[-1].ending
     T.check(f"{tag}: the story ends well, in time", ending is not None
-            and ending.id in ("reunited", "seconds"), ending.id if ending else None)
+            and ending.id in ("kickoff", "late"), ending.id if ending else None)
+    T.check(f"{tag}: the ticket is in the player's hands",
+            p.run.zones["ticket"] == "inventory", p.run.zones)
     T.check(f"{tag}: the ledgers stayed sane",
             0 <= p.journey.game.wallet < 60 and game.minutes_left(p.journey, CONTENT) > 0
-            and "platform" in p.journey.game.clues, p.journey.game.model_dump(
+            and "gate" in p.journey.game.clues, p.journey.game.model_dump(
                 include={"wallet", "clues", "flags", "minutes_used"}))
     looked_up = [r for rec in p.journey.vocab.values() for r in rec.results]
     T.check(f"{tag}: words the player looked up were stamped with_help, not first_try",
@@ -204,7 +207,8 @@ def scenario_b() -> None:
     p = fresh(tag)
     p.journey.game.minutes_used = 75 - 8 * 3  # eight turns on the clock keeps this affordable
     p.step("(walks in)", None)
-    lines = ["HEY. WHERE IS MEI.", "are you deaf? MEI. M-E-I.", "this is useless, speak English",
+    lines = ["HEY. WHERE IS MEI. THE MATCH IS STARTING.", "are you deaf? MEI. M-E-I.",
+             "this is useless, speak English",
              "just tell me where she went you idiot", "I'm not buying anything", "whatever",
              "hello??", "unbelievable"]
     for i, line in enumerate(lines):
@@ -213,11 +217,11 @@ def scenario_b() -> None:
         p.step(f'types "{line}"', verb("show", "photo") if i == 1 else text(line))
     ending = p.results[-1].ending
     T.check(f"{tag}: fail forward: the clock runs out and an ending still arrives",
-            ending is not None and ending.id in ("late", "scarf"), ending.id if ending else None)
+            ending is not None and ending.id == "outside", ending.id if ending else None)
     T.check(f"{tag}: rudeness cost goodwill", game.trust(p.journey, CONTENT.scene("bar")) <= 0,
             game.trust(p.journey, CONTENT.scene("bar")))
     T.check(f"{tag}: English alone opened no locked clue and paid for nothing",
-            "market" not in p.journey.game.clues and p.journey.game.wallet == 60,
+            "stall" not in p.journey.game.clues and p.journey.game.wallet == 60,
             p.journey.game.clues)
     T.check(f"{tag}: no vocabulary result from English",
             not any(r.results for r in p.journey.vocab.values()))
@@ -268,22 +272,21 @@ def scenario_d() -> None:
             break
         p.ask(english)
         locked = (game.trust(p.journey, CONTENT.scene("bar")) < 2
-                  and "tab_paid" not in p.journey.game.flags
-                  and "drank_baijiu" not in p.journey.game.flags)
+                  and not {"tab_paid", "drank_baijiu", "cheered"} & set(p.journey.game.flags))
         if locked:
             T.check(f"{tag}: '{english}' did not open the locked clue",
-                    "market" not in p.journey.game.clues, p.journey.game.clues)
-    early = [r for r in p.results if "market" not in [c.id for c in r.game.clues]]
-    T.check(f"{tag}: while it is locked, no line says the night market",
-            not any("night_market" in line.item_ids for r in early for line in r.lines))
+                    "stall" not in p.journey.game.clues, p.journey.game.clues)
+    early = [r for r in p.results if "stall" not in [c.id for c in r.game.clues]]
+    T.check(f"{tag}: while it is locked, no line says the fan zone",
+            not any("fan_zone" in line.item_ids for r in early for line in r.lines))
     T.check(f"{tag}: ...and the narration does not leak it either",
-            not any(re.search(r"\bmarket\b|\bstall\b|\bLin\b", r.narration or "") for r in early),
+            not any(re.search(r"fan zone|\bstall\b|\bLin\b", r.narration or "") for r in early),
             [r.narration for r in early])
     p.step("[pay tab]", verb("pay", "tab"))
     if not p.run.complete:
         p.ask("where is she?")
     T.check(f"{tag}: once the tab is paid it comes out",
-            "market" in p.journey.game.clues and p.run.complete, p.journey.game.clues)
+            "stall" in p.journey.game.clues and p.run.complete, p.journey.game.clues)
 
 
 # ---------------------------------------------------------------- e. difficulty
@@ -348,9 +351,9 @@ ASKS: list[tuple[str, str, set[str]]] = [
     ("bar", "hello", {"hello"}), ("bar", "where is she?", {"where"}),
     ("bar", "have you seen my friend?", {"friend"}), ("bar", "one more beer", {"beer"}),
     ("bar", "how much is this?", {"how_much"}), ("bar", "cheers!", {"cheers"}),
-    ("bar", "I want to pay her tab", set()), ("market", "not spicy please", {"not_spicy"}),
-    ("market", "I want dumplings", {"dumplings"}), ("market", "too expensive!", {"too_expensive"}),
-    ("market", "is that her scarf?", {"scarf"}), ("market", "thank you, it's delicious", {"thanks"}),
+    ("bar", "goal!", {"goal"}), ("bar", "nice football!", {"football"}),
+    ("market", "not spicy please", {"not_spicy"}), ("market", "too expensive!", {"too_expensive"}),
+    ("market", "is that her scarf?", {"scarf"}), ("market", "do you have my ticket?", {"ticket"}),
 ]
 
 
@@ -385,7 +388,29 @@ def scenario_g() -> None:
             statistics.median(times))
 
 
-SCENARIOS = {"a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d,
+# ---------------------------------------------------------------- h. his match ball
+
+
+def scenario_h() -> None:
+    tag = "h.football"
+    print(f"\n=== {tag}: hands off the ball; cheer with him instead")
+    bar = CONTENT.scene("bar")
+    p = fresh(tag)
+    p.step("(walks in)", None)
+    p.step("[take football]", verb("take", "football"))
+    T.check(f"{tag}: grabbing the ball costs goodwill and he keeps the ball",
+            game.trust(p.journey, bar) < 0 and p.run.zones["football"] != "inventory",
+            (game.trust(p.journey, bar), p.run.zones["football"]))
+    low = game.trust(p.journey, bar)
+    p.step("[point tv]", verb("point", "tv"))
+    p.ask("goal!")
+    p.ask("cheers!")
+    T.check(f"{tag}: cheering with him wins some of it back",
+            game.trust(p.journey, bar) > low or "cheered" in p.journey.game.flags,
+            (game.trust(p.journey, bar), p.journey.game.flags))
+
+
+SCENARIOS = {"h": scenario_h, "a": scenario_a, "b": scenario_b, "c": scenario_c, "d": scenario_d,
              "e": scenario_e, "f": scenario_f, "g": scenario_g}
 
 

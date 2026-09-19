@@ -83,48 +83,83 @@ SCREEN = {
 }
 
 
+NO_BRAND = (
+    "GENERIC FOOTBALL ONLY: no official tournament branding of any kind — no federation or "
+    "cup marks, no trophy, no mascots, no real team crests or national emblems, no sponsor logos, "
+    "no recognisable real people. Every jersey, scarf, flag and pennant is a plain colour block "
+    "or plain stripes with NO crest, NO number and NO lettering."
+)
+
+# Sent with the asset's own previous raw when one exists, so a re-dress keeps the same person
+# and the same composition (object spots survive) instead of inventing a new scene.
+PRIOR = (
+    "The attached painting is the PREVIOUS version of this exact image. Repaint it: keep the "
+    "same camera, framing and composition, every surface in the same place and, above all, the "
+    "SAME PERSON — identical face, age, hair, build and pose. Wherever the description below "
+    "differs from the attachment (clothing, set dressing, lighting, background), the "
+    "description wins.\n\n"
+)
+
+
 def _bg_tail(who: str) -> str:
     return (
         f"Exactly ONE person in the image: {who}. No other people, no customers, no reflections "
-        f"of people, no hands or body of the viewer. {NO_TEXT} Full-bleed, no border, no frame."
+        f"of people, no hands or body of the viewer. {NO_BRAND} {NO_TEXT} Full-bleed, no border, "
+        "no frame."
     )
 
 
 BAR_BG = f"""{STYLE}
 
 FIRST-PERSON point of view of a customer sitting on a bar stool at the counter of a small,
-late-night neighbourhood bar in a Chinese city. Eye-level, straight-on, symmetrical-ish framing,
-16:9.
+late-night neighbourhood bar in a Chinese city, on the night of a huge football final. Eye-level,
+straight-on, symmetrical-ish framing, 16:9.
 
 THE BARTENDER: a Chinese man in his mid-40s standing directly behind the counter, framed
 waist-up, placed at the horizontal CENTRE of the image. Short dark hair with a little grey, light
-stubble, a dark charcoal work shirt with the sleeves rolled to the elbows and a dark apron. Calm,
-wry, self-possessed. He looks straight at the viewer with a NEUTRAL, relaxed expression, mouth
-closed. Both hands rest flat on the far edge of the counter in front of him, empty.
+stubble. Tonight he wears a PLAIN deep-red short-sleeved football jersey — one flat colour with a
+simple darker collar, no crest, no number, no lettering, no stripes, no logo — under his dark
+apron. Calm, wry, self-possessed. He looks straight at the viewer with a NEUTRAL, relaxed
+expression, mouth closed. Both hands rest flat on the far edge of the counter in front of him,
+empty.
 
-THE BACK WALL behind him: dark wood panelling with ONE long, simple wooden shelf running the full
-width of the image at the height of his shoulders, softly lit from above by a hidden warm light
-strip. IMPORTANT: the shelf top is almost completely BARE — long clear empty stretches of shelf
-to the LEFT and to the RIGHT of the bartender, where props will be added later. Only at the
-extreme left end and extreme right end of the shelf is there a small cluster of generic dark
-unlabeled bottles and glassware. Nothing on the shelf near the bartender. Above, out of focus, a
-second shelf in shadow with a few dark glasses.
+THE BACK WALL behind him: dark wood panelling with a long back counter inside a warmly lit alcove
+(hidden warm light strip above it) running behind him at the height of his elbows. IMPORTANT: the
+back counter top is almost completely BARE — long clear empty stretches to the LEFT and to the
+RIGHT of the bartender, where props will be added later. There are NO bottles and NO objects on
+the back counter at all: BOTH ends of it are bare, lit, empty wood (if a previous version shows a
+cluster of bottles standing at the left end of the back counter, REMOVE it and paint the bare
+counter and the lit alcove wall behind it). Above the alcove, a dark shelf in shadow
+carries a few generic dark bottles of bare glass and dark glasses at its far left only.
 
-THE NEAR COUNTER: a dark, polished, worn wooden bar counter fills the bottom 30% of the frame,
+MATCH-NIGHT DRESSING: a string of small PLAIN triangular pennants in mixed flat colours (red,
+white, yellow, blue) is draped along the front edge of that upper shelf, and two PLAIN knitted
+football scarves in simple red-and-white bar stripes are pinned flat to the shelf edge above the
+alcove, one at the far left and one right of centre. Nothing hangs low enough to cover the back
+counter.
+
+THE RIGHT WALL: at the right of the frame the dark wood-panelled side wall comes forward. From
+the top of the frame down to the height of the back counter — roughly the right-hand sixth of the
+frame — it is one clean, plain, EMPTY stretch of dark wood panelling: no window, no neon, no door,
+no shelf, no picture, no decoration, nothing mounted on it. There is NO television, NO screen,
+NO monitor and NO bracket anywhere in the image, not even partly cropped at a corner (one is
+composited later).
+
+THE NEAR COUNTER: a dark, polished, worn wooden bar counter fills the bottom 27% of the frame,
 running edge to edge, seen from slightly above. Its surface is completely EMPTY — no glasses, no
 coasters, no napkins, no objects at all — and evenly, softly lit so that props can be placed on
 it later.
 
-LIGHT: night. Warm tungsten practical lamps, a soft pool of light on the counter, and a faint
-magenta-and-teal neon glow spilling in from the street through a window at the far right edge,
-without any readable sign.
+LIGHT: night. Warm tungsten practical lamps and a soft pool of light on the counter, against a
+faint cool bluish-white flicker falling in from OUTSIDE the frame beyond the top-right corner (its
+source is never visible), rimming the bartender's shoulder and the right side of the room.
 
 {_bg_tail("the bartender")}"""
 
 MARKET_BG = f"""{STYLE}
 
 FIRST-PERSON point of view of a customer standing at the counter of a street-food stall in a busy
-Chinese night market. Eye-level, straight-on framing, 16:9.
+Chinese night market, on the night of a huge football final. Eye-level, straight-on framing, 16:9.
 
 THE VENDOR: a Chinese woman in her mid-50s standing directly behind the stall counter, framed
 waist-up, placed at the horizontal CENTRE of the image. Hair tied back, a few grey strands,
@@ -147,10 +182,19 @@ THE NEAR COUNTER: a worn stainless-steel stall counter with a wooden front edge 
 EMPTY — no bowls, no bottles, no chopsticks, no objects at all — and evenly, softly lit so that
 props can be placed on it later.
 
-LIGHT: night. A string of warm bare bulbs across the top of the frame, glowing steam. Past the
-edges of the stall the market is only darkness with soft round out-of-focus bokeh lights. There
-are NO signs, NO billboards, NO banners, NO shopfronts and NO posters anywhere in the background,
-not even blurred ones, and no distinguishable people.
+MATCH-NIGHT DRESSING: the stall stands on the edge of a FAN ZONE on the night of a huge football
+final. Strings of small PLAIN triangular pennants in mixed flat colours hang overhead with the
+bare bulbs. At the extreme LEFT edge of the frame, beside the stock pot, a glass jar holds three
+or four small PLAIN hand-flags on wooden sticks (flat red and white, no emblem) as set dressing —
+nowhere near the clear stretches of the back counter.
+
+LIGHT AND BACKGROUND: night. A string of warm bare bulbs across the top of the frame, glowing
+steam. Past the left edge of the stall, far down the lane, the cool blue-white glow of a GIANT
+OUTDOOR SCREEN — only a soft, blurred, overexposed rectangle of light with no readable content —
+and in front of it a dense crowd as tiny soft out-of-focus silhouettes and bokeh, a few raised
+arms and plain scarves. There are NO signs, NO billboards, NO banners with markings, NO
+shopfronts and NO posters anywhere in the background, not even blurred ones, and no
+distinguishable people.
 
 {_bg_tail("the vendor")}"""
 
@@ -205,30 +249,37 @@ COVERS = {
     "bar": f"""{STYLE}
 
 Establishing shot, 16:9: the exterior doorway of a small neighbourhood corner bar on a narrow
-side street in a Chinese city, late at night, just after rain. A dark wood-and-glass door and one
-steamed-up window glow warm amber from inside, where bottles and a bar counter are only vague
-soft shapes. The wet asphalt and paving reflect the warm glow and a little magenta-and-teal
-neon from an ABSTRACT neon shape (a simple line or ring, not a letter or word) above the door.
-A parked bicycle, a drainpipe, tangled overhead cables, light mist. Inviting, quiet, a little
-lonely. Nobody in the street. {NO_TEXT} Full-bleed, no border.""",
+side street in a Chinese city, late at night, just after rain, on the night of a huge football
+final. A dark wood-and-glass door and one steamed-up window glow warm amber from inside, where
+bottles and a bar counter are only vague soft shapes, and a cool blue-white television glow
+flickers through the fogged glass from high inside. Through the fogged glass NOTHING is legible:
+only soft amber shapes and that cool glow — no red shapes, no sign and no poster inside, and no
+poster or notice on the outside walls either. A PLAIN knitted football scarf in red-and-white
+bar stripes hangs in the window, and a string of small PLAIN triangular pennants in mixed flat
+colours runs across the facade. The wet asphalt and paving reflect the warm glow and a little
+magenta-and-teal neon from an ABSTRACT neon ring (a simple ring, not a letter or word) above the
+door. A parked bicycle, a drainpipe, tangled overhead cables, light mist. Inviting, expectant.
+Nobody in the street. {NO_BRAND} {NO_TEXT} Full-bleed, no border.""",
     "market": f"""{STYLE}
 
 Establishing shot, 16:9, painted with the same realistic, atmospheric, cinematic finish as a film
 still (no ink outlines, no sketch lines): a narrow night-market lane in a Chinese city seen from
-its entrance, late evening, just after rain. Street-food stalls under dark canvas awnings recede
-into misty distance, strings of bare warm bulbs overhead, thick glowing steam rising from pots
-and grills, wet ground reflecting the lights. The nearest stall on the right is the hero: a worn
+its entrance, late evening, just after rain, on the night of a huge football final. Street-food
+stalls under dark canvas awnings recede into misty distance, strings of bare warm bulbs and small
+PLAIN triangular pennants in mixed flat colours overhead, thick glowing steam rising from pots and
+grills, wet ground reflecting the lights. The nearest stall on the right is the hero: a worn
 stainless-steel counter, a big steaming stock pot, stacked plain bowls, bamboo steamers, one warm
-hanging lamp. Distant shoppers are only soft out-of-focus silhouettes deep in the haze.
-Inviting, lively, a little melancholy. There are NO signs, NO banners, NO boards, NO posters and
-NO lantern decorations with markings anywhere — only plain canvas, metal, wood, bulbs and steam.
-{NO_TEXT} Full-bleed, no border.""",
+hanging lamp. At the far end of the lane the FAN ZONE: the cool blue-white glow of a giant outdoor
+screen — only a blurred, overexposed rectangle of light with no readable content — and a dense
+crowd as soft out-of-focus silhouettes with raised arms and plain scarves. Electric, inviting.
+There are NO signs, NO banners with markings, NO boards and NO posters anywhere — only plain
+canvas, metal, wood, bulbs, pennants and steam. {NO_BRAND} {NO_TEXT} Full-bleed, no border.""",
 }
-
 
 MEI = (
     "Mei: a Chinese woman in her late twenties with a short dark chin-length bob, warm brown eyes, "
-    "a bright open face, wearing a dark wool coat and a chunky knitted scarf in a deep, dark wine-crimson (burgundy) red"
+    "a bright open face, wearing a dark wool coat and a knitted FOOTBALL SCARF in plain "
+    "red-and-white bar stripes (no crest, no lettering) round her neck"
 )
 
 
@@ -299,11 +350,33 @@ OBJECTS: dict[str, dict[str, ObjSpec]] = {
             "border, wider at the bottom, softly scuffed corners, one faint crease. The glossy "
             f"picture area shows {MEI}, photographed from the chest up, head thrown back a little, "
             "laughing with real joy, at night, with soft out-of-focus warm amber and red city "
-            "lights behind her. The white border is completely blank: no handwriting, no date. "
-            "The photograph is shown almost straight-on, rotated about eight degrees, as if lying "
-            "on a surface.",
+            "lights behind her. She is the SAME WOMAN as in the second attached image (same face, "
+            "same haircut); only her scarf is as described here. The white border is completely "
+            "blank: no handwriting, no date. The photograph is shown almost straight-on, rotated "
+            "about eight degrees, as if lying on a surface.",
             aspect="4:3",
             opaque=True,
+            identity="bar/obj_photo",
+        ),
+        "obj_football": ObjSpec(
+            "a classic leather match football — traditional pattern of white hexagons and black "
+            "pentagons — scuffed and worn from real play, resting on a small turned dark-wood "
+            "display stand with a shallow cup, clearly a prized keepsake. The ball is completely "
+            "unbranded: no logo, no lettering, no signature, no printing of any kind.",
+            aspect="1:1",
+        ),
+        "obj_tv": ObjSpec(
+            "a wall-mounted flat-screen television with a thin black bezel on a short black "
+            "swivel bracket, turned slightly so the screen faces a little to the viewer's left, "
+            "seen from slightly below. The screen is ON and shows a floodlit green football "
+            "pitch from a high broadcast camera angle, with its white line markings and tiny "
+            "players as small specks in plain flat-coloured kits, dark stands around it. The "
+            "picture has NO scoreboard, NO clock, NO caption, NO channel logo and NO graphics. "
+            "The bezel has no brand mark. Only the television and its bracket, nothing else.",
+            screen="blue",
+            aspect="16:9",
+            opaque=True,
+            hanging=True,
         ),
         "obj_tab": ObjSpec(
             "an unpaid bar tab: a small upright brass bill spike on a round brass base, with "
@@ -350,15 +423,38 @@ OBJECTS: dict[str, dict[str, ObjSpec]] = {
             aspect="4:3",
         ),
         "obj_scarf": ObjSpec(
-            "a chunky knitted wool scarf in a deep, dark WINE-CRIMSON / burgundy red (around #8a1f2b; "
-            "darker and cooler than tomato or brick red, never orange) — EXACTLY the scarf the woman wears "
-            "in the second attached image, same colour and same knit — loosely knotted once and "
-            "hanging straight down from a single small dark iron wall hook at the very top, its "
-            "two fringed ends hanging at slightly different lengths, as if someone had kept it "
-            "aside for its owner. Only the hook and the scarf, nothing else. Seen straight-on.",
+            "a knitted football supporter's scarf in PLAIN red-and-white bar stripes — EXACTLY the "
+            "scarf the woman wears in the second attached image, same two colours, same stripe "
+            "width, same knit — with white-and-red fringed ends, loosely knotted once and hanging "
+            "straight down from a single small dark iron wall hook at the very top, its two ends "
+            "at slightly different lengths, as if someone had kept it aside for its owner. The "
+            "scarf carries NO crest, NO lettering and NO emblem: stripes only. Only the hook and "
+            "the scarf, nothing else. Seen straight-on.",
             aspect="9:16",
             hanging=True,
             identity="bar/obj_photo",
+        ),
+        "obj_ticket": ObjSpec(
+            "a big-match ticket and its wristband: one glossy rectangular card ticket with a "
+            "slight curl, its design made ONLY of bold abstract diagonal colour bands in red, "
+            "white and gold with a shimmering silver holographic foil strip down one edge and a "
+            "perforated stub, plus a flat woven fabric wristband in the same red and white laid "
+            "as an open strip behind it. Both are held together at the top by one plain wooden "
+            "clothes-peg, as if pegged up for safe keeping. There is NO text, NO digits, NO "
+            "barcode, NO QR code, NO seat details, NO logo and NO emblem anywhere — where print "
+            "would be there are only plain colour bands. Seen straight-on.",
+            aspect="3:4",
+            opaque=True,
+            hanging=True,
+        ),
+        "obj_flag": ObjSpec(
+            "a small supporter's hand-waver flag on a thin round wooden stick: a rectangular "
+            "cloth flag QUARTERED in plain red and white (four plain rectangles, red top-left and "
+            "bottom-right, white the other two), rippling slightly, the stick leaning about "
+            "twenty degrees. The flag carries NO emblem, NO crest, NO lettering and NO stars: "
+            "four flat colour fields only. Only the flag and its stick, nothing else.",
+            aspect="3:4",
+            hanging=True,
         ),
         "obj_chili": ObjSpec(
             "a squat clear glass jar, lid off, three-quarters full of deep red chili oil with "
@@ -372,38 +468,56 @@ OBJECTS: dict[str, dict[str, ObjSpec]] = {
 # Full-frame story illustrations: (output path relative to content/, prompt, reference raws).
 _MEI_REF = (
     f"THE FRIEND is {MEI} — she is the woman in the attached instant photo: same face, same "
-    "haircut, same red scarf. "
+    "haircut, same striped scarf. "
+)
+_CROWD = (
+    "The crowd are anonymous fans seen mostly from behind or as backlit silhouettes, in plain "
+    "flat-coloured shirts and plain red-and-white bar-striped scarves. THE FLAGS ARE NOT NATIONAL "
+    "FLAGS: every flag in the image is EITHER one single flat colour (all red, or all white) OR "
+    "the supporters' flag QUARTERED in red and white (four plain rectangles, red top-left and "
+    "bottom-right, white the other two). No flag has two or three bands or stripes, no flag has "
+    "any blue, green or yellow, no flag carries an emblem. The buildings around the square are "
+    "dark, plain, out-of-focus facades with a few lit windows only: NO shop signs, NO banners, "
+    "NO posters, NO billboards, NO emblems on them. "
+)
+# Sent with an illustration's own previous raw, so a fix keeps the people and the staging.
+ILLUSTRATION_PRIOR = (
+    "The FIRST attached image is the PREVIOUS version of this exact painting. Repaint it: keep "
+    "the same camera, composition, light and people in the same poses — above all the woman in "
+    "the foreground keeps the IDENTICAL face, haircut, scarf, coat, pose and drink. Wherever the "
+    "description below differs from it (flags, signs, set dressing), the description wins.\n\n"
+)
+_BIG_SCREEN = (
+    "a GIANT OUTDOOR LED SCREEN on a truss tower, showing only a floodlit green football pitch "
+    "from a high broadcast camera angle with tiny players as specks — NO scoreboard, NO clock, "
+    "NO caption, NO channel logo, NO graphics on it"
 )
 ILLUSTRATIONS: dict[str, tuple[str, str, list[str]]] = {
-    "market/ending_reunited": (
-        "scenes/market/art/ending_reunited.webp",
+    "market/ending_kickoff": (
+        "scenes/market/art/ending_kickoff.webp",
         f"""{STYLE}
 
-FIRST-PERSON point of view, 16:9: you have just run onto an underground metro platform late at
-night. The LAST TRAIN stands at the platform on the right, its doors open, warm golden light
-spilling out of the carriage across the polished platform tiles. It is INDOORS and dry: no
-rain, no falling water, no streaks in the air. {_MEI_REF}She stands a few
-metres ahead by the open doors, mid-turn toward the viewer, with a huge relieved, delighted grin,
-one arm raised high in a wave, scarf swinging. She is the only person in the image: the carriage
-behind her is completely EMPTY (bare seats, nobody inside) and the platform is deserted. There is
-NO route map, NO line diagram and NO station strip anywhere — the panels above the platform doors
-are plain brushed metal. Cool fluorescent platform light against the warm train glow, motion and joy, cinematic depth of field.
-All platform signs, screens, route maps and the train's destination display are blank glowing
-panels or abstract colour. {NO_TEXT} Full-bleed, no border.""",
+FIRST-PERSON point of view, 16:9: you are standing in a packed outdoor FAN ZONE in a Chinese city
+at night, at the moment of kickoff of a huge football final. Ahead, above the heads of the crowd,
+{_BIG_SCREEN}. Red flare smoke drifts through the floodlights and confetti hangs in the air.
+{_CROWD}{_MEI_REF}She is RIGHT BESIDE the viewer in the near foreground on the right, turning
+toward the viewer with a huge, delighted grin, holding out a plain plastic cup of beer to the
+viewer. She is the only person whose face is clearly seen. Euphoric, electric, warm skin tones
+against the cool screen light, cinematic depth of field. {NO_BRAND} {NO_TEXT} Full-bleed, no
+border.""",
         ["bar/obj_photo"],
     ),
     "market/ending_late": (
         "scenes/market/art/ending_late.webp",
         f"""{STYLE}
 
-FIRST-PERSON point of view, 16:9: the same underground metro platform late at night, now EMPTY
-and quiet. On the left the dark tunnel mouth, with the two red tail lights of the departing last
-train shrinking into the darkness. {_MEI_REF}She sits on a plain metal platform bench on the
-right, turned toward the viewer, shoulders lifted in a shrug, palms up, with a wry, warm,
-lopsided smile — 'well, we missed it'. Beside her on the bench sit TWO steaming takeaway paper
-bowls with wooden chopsticks laid across them. She is the only person in the image. Cool
-fluorescent light, a warm pool of light on the bench, steam catching it. Bittersweet but warm.
-All platform signs, screens and route maps are blank glowing panels or abstract colour.
+FIRST-PERSON point of view, 16:9: you arrive late at a packed outdoor FAN ZONE in a Chinese city at
+night, at the exact moment of a GOAL. The whole crowd is mid-eruption — jumping, arms thrown up,
+beer spraying, confetti and red flare smoke — backlit by {_BIG_SCREEN}. {_CROWD}{_MEI_REF}She
+has spotted the viewer: in the near foreground she pushes out of the crowd toward the viewer,
+laughing out loud, one arm punched up in the air, the other hand holding out a bare amber beer
+bottle with no label to the viewer. She is the only person whose face is clearly seen. Joyful
+chaos, motion blur at the edges, warm skin tones against the cool screen light. {NO_BRAND}
 {NO_TEXT} Full-bleed, no border.""",
         ["bar/obj_photo"],
     ),
@@ -412,14 +526,17 @@ All platform signs, screens and route maps are blank glowing panels or abstract 
         f"""{STYLE}
 
 Title key art, 16:9, for a story set in the world of the two attached paintings (same city, same
-finish, same palette): a rain-wet narrow street in a Chinese city late at night, seen from
-street level. In the middle distance an ELEVATED RAILWAY crosses the frame on concrete pillars,
-and a lit metro train is crossing it, its row of warm windows streaking slightly with motion. On
-the right side of the street, the warm amber glow of a small corner bar's fogged window and door
-spills onto the pavement. Far down the lane on the left, tiny strings of warm market bulbs and
-rising steam. Wet asphalt reflections, tangled overhead cables, mist. Nobody in the street.
+finish, same palette): a rain-wet narrow street in a Chinese city on the night of a huge football
+final, seen from street level. Strings of small PLAIN triangular pennants in mixed flat colours
+criss-cross the lane overhead. At the far END of the street, the cool blue-white glow of a giant
+outdoor screen — only a blurred, overexposed rectangle of light with no readable content — and a
+dense crowd as tiny soft silhouettes with raised arms, flare smoke catching the light. On the
+RIGHT side of the street, the warm amber glow of a small corner bar's fogged window and door
+spills onto the pavement. On the LEFT side, the bare bulbs, steam and steel of a street-food
+stall. Wet asphalt reflections, mist. Nobody close to the camera.
 COMPOSITION: the top-left third of the image is calm, empty, dark night sky with soft mist and
-no cables, no buildings and no detail, reserved for a title. {NO_TEXT} Full-bleed, no border.""",
+no cables, no pennants, no buildings and no detail, reserved for a title. {NO_BRAND} {NO_TEXT}
+Full-bleed, no border.""",
         ["bar/cover", "market/cover"],
     ),
 }
@@ -616,7 +733,8 @@ def build_bg(scene: str, prompt: str, rederive: bool) -> None:
     name = f"{scene}/bg"
     raw = load_raw(name) if rederive else None
     if raw is None:
-        raw = gen_image(name, prompt)
+        prior = load_raw(name)
+        raw = gen_image(name, (PRIOR if prior else "") + prompt, refs=[prior] if prior else None)
         save_raw(name, raw)
     q = save_webp(fit_to(raw.convert("RGB"), BG_SIZE), SCENES / scene / "art" / "bg.webp")
     print(f"  webp quality {q}")
@@ -644,7 +762,14 @@ def build_cover(scene: str, rederive: bool) -> None:
     name = f"{scene}/cover"
     raw = load_raw(name) if rederive else None
     if raw is None:
-        raw = gen_image(name, COVERS[scene])
+        prior = load_raw(name)
+        prompt = COVERS[scene]
+        if prior:
+            prompt = (
+                "The attached painting is the PREVIOUS version of this place: keep the same "
+                "street, building and viewpoint, and apply the description below.\n\n" + prompt
+            )
+        raw = gen_image(name, prompt, refs=[prior] if prior else None)
         save_raw(name, raw)
     save_webp(fit_to(raw.convert("RGB"), COVER_SIZE), SCENES / scene / "art" / "cover.webp")
 
@@ -658,9 +783,11 @@ def build_object(scene: str, stem: str, rederive: bool) -> None:
         assert style is not None
         refs = [fit_to(style.convert("RGB"), (1600, 900))]
         if spec.identity:
+            # May be the asset's own previous raw (a re-dress of the same subject).
             ident = load_raw(spec.identity)
-            assert ident is not None
-            refs.append(ident)
+            assert ident is not None or spec.identity == name, f"missing raw {spec.identity}"
+            if ident is not None:
+                refs.append(ident)
         raw = gen_image(
             name,
             _obj_prompt(spec.subject, spec.screen, hanging=spec.hanging),
@@ -689,12 +816,13 @@ def build_illustration(name: str, rederive: bool) -> None:
     rel, prompt, ref_names = ILLUSTRATIONS[name]
     raw = load_raw(name) if rederive else None
     if raw is None:
-        refs = []
+        prior = load_raw(name)
+        refs = [prior] if prior else []
         for ref in ref_names:
             img = load_raw(ref)
             assert img is not None, f"missing raw reference {ref}"
             refs.append(img)
-        raw = gen_image(name, prompt, refs=refs)
+        raw = gen_image(name, (ILLUSTRATION_PRIOR if prior else "") + prompt, refs=refs)
         save_raw(name, raw)
     save_webp(
         fit_to(raw.convert("RGB"), ILLUSTRATION_SIZE),
@@ -716,6 +844,11 @@ class Asset:
     build: Callable[[bool], None]
     deps: list[str] = field(default_factory=list)  # asset names that must exist first
     needs_region: bool = False
+
+
+def _identity_deps(scene: str, stem: str) -> list[str]:
+    ident = OBJECTS[scene][stem].identity
+    return [ident] if ident and ident != f"{scene}/{stem}" else []
 
 
 def _assets() -> list[Asset]:
@@ -743,10 +876,7 @@ def _assets() -> list[Asset]:
                     f"{scene}/{stem}",
                     art / f"{stem}.png",
                     lambda r, s=scene, st=stem: build_object(s, st, r),
-                    [
-                        bg,
-                        *([OBJECTS[scene][stem].identity] if OBJECTS[scene][stem].identity else []),
-                    ],
+                    [bg, *_identity_deps(scene, stem)],
                 )
             )
         for stem in SHARED.get(scene, []):

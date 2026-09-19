@@ -119,7 +119,9 @@ WHAT THEY WANT TONIGHT: {npc.wants}
 WHAT THEY KNOW AND WILL NOT SAY YET: {npc.secrets}
 WHAT THEY DO NOT KNOW: anything about this stranger. Not why they came, not who they are \
 looking for, not what is in their pockets. {name} learns it only from what the player shows, \
-says or does, and never prompts for the photo or the friend before then.
+says or does, and never asks about a friend, a photo or a ticket before then. (The NARRATOR \
+may nudge the player toward showing something, in story mode. The CHARACTER may not: they \
+cannot see into pockets.)
 
 THE PLAYER
 A foreigner who speaks almost none of the language. They play by typing or speaking \
@@ -387,6 +389,12 @@ def build_snapshot(
     if run.transcript:
         out.append("\nSO FAR")
         out += [_entry_line(e) for e in run.transcript[-TRANSCRIPT_WINDOW:]]
+        used = list(dict.fromkeys(
+            e.line.text for e in run.transcript if isinstance(e, NpcEntry) and not e.line.item_ids
+        ))[-8:]
+        if used:
+            out.append("asides you have already used in this act (never say one of these again): "
+                       + " / ".join(used))
         exchange = run.exchange
         helped = {
             0: "none",

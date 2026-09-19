@@ -34,15 +34,15 @@ def record(journey: Journey, item: str, attempt: str, *, understood: bool = True
 def played_bar() -> Journey:
     j = started(enter_scene(new_journey(CONTENT, "sum1", language="zh-CN"), CONTENT))
     assert j.scene is not None
-    vocab.note_appearances(j, "bar", ["hello", "beer", "friend", "tea", "how_much", "money",
+    vocab.note_appearances(j, "bar", ["hello", "beer", "friend", "baijiu", "how_much", "money",
                                       "thanks"])
     record(j, "beer", "a1", produced=True, highlighted=True)
     record(j, "beer", "a2", produced=True)
     record(j, "how_much", "a3", produced=True)
     record(j, "friend", "a4", highlighted=True)
     record(j, "money", "a5", help_level=2)
-    record(j, "tea", "a6", understood=False)
-    j.game.clues = ["regular", "market"]
+    record(j, "baijiu", "a6", understood=False)
+    j.game.clues = ["regular", "stall"]
     j.game.flags = ["photo_shown"]
     j.scene.goals_done = ["ask", "trail"]
     j.game.phrasebook = [Phrase(phrase_id="p-1", source="where is she?", text="x",
@@ -64,8 +64,8 @@ def test_bar_summary() -> None:
     T.check("states and per-scene outcomes come from the record",
             items["beer"].state == "mastered" and items["beer"].outcomes
             == ["with_help", "first_try"] and items["friend"].state == "shaky"
-            and items["money"].outcomes == ["with_hint"] and items["tea"].outcomes == ["missed"]
-            and items["baijiu"].state == "not_encountered" and items["baijiu"].outcomes == [])
+            and items["money"].outcomes == ["with_hint"] and items["baijiu"].outcomes == ["missed"]
+            and items["cheers"].state == "not_encountered" and items["cheers"].outcomes == [])
     T.check("a word heard but never acted on stays not_encountered",
             items["hello"].state == "not_encountered" and items["thanks"].outcomes == [])
     T.check("produced is per scene", items["beer"].produced and items["how_much"].produced
@@ -75,25 +75,25 @@ def test_bar_summary() -> None:
             and summary.counts.mastered == 2 and summary.counts.shaky == 3
             and summary.counts.heard == sum(1 for i in summary.items
                                             if i.heard and i.state == "not_encountered")
-            and items["hello"].heard and not items["baijiu"].heard, summary.counts)
+            and items["hello"].heard and not items["cheers"].heard, summary.counts)
     T.check("the summary carries the player's own phrasebook",
             [p.source for p in summary.phrasebook] == ["where is she?"])
     T.check("nothing is recalled in the first scene",
             summary.recalled == [] and not any(i.recall for i in summary.items))
     T.check("next scene is the market", summary.next_scene is not None
             and summary.next_scene.model_dump() == {
-                "id": "market", "name": "Night Market",
+                "id": "market", "name": "The Fan-Zone Stall",
                 "tagline": CONTENT.scene("market").tagline})
     text = " ".join(summary.lines)
     T.check("lines report goals, words met, unaided words and what the learner said",
             "Done here: Show someone Mei's photo and Find out where Mei went." in summary.lines
-            and "7 of 11 words came up in The Corner Bar." in summary.lines
-            and "You understood 2 of 11 words with no help." in summary.lines
+            and "7 of 12 words came up in The Corner Bar." in summary.lines
+            and "You understood 2 of 12 words with no help." in summary.lines
             and f"You said {ZH.items['beer'].text} and {ZH.items['how_much'].text} yourself."
             in summary.lines, summary.lines)
     T.check("shaky words are named with what happens next",
             any("still need a second look" in ln and ZH.items["friend"].text in ln
-                and ZH.items["tea"].text in ln for ln in summary.lines), summary.lines)
+                and ZH.items["baijiu"].text in ln for ln in summary.lines), summary.lines)
     T.check("no score, percentage, grade or fluency claim",
             not re.search(r"%|\bscore|\bfluen|\bgrade|\bpoints?\b|\blevel\b|\bpercent", text,
                           re.IGNORECASE), text)
@@ -104,21 +104,21 @@ def test_recall_summary() -> None:
     j = played_bar()
     finish_scene(j, CONTENT)
     j = started(enter_scene(j, CONTENT))
-    vocab.note_appearances(j, "market", ["noodles", "beer"])
-    record(j, "beer", "m1", produced=True)
+    vocab.note_appearances(j, "market", ["dumplings", "how_much"])
+    record(j, "how_much", "m1", produced=True)
     record(j, "friend", "m2", highlighted=True)
-    record(j, "noodles", "m3")
+    record(j, "dumplings", "m3")
     summary = build_summary(j, CONTENT)
     items = {i.item_id: i for i in summary.items}
     T.check("recalled lists first_try words first met in an earlier scene",
-            summary.recalled == ["beer"] and items["beer"].recall and not items["noodles"].recall
+            summary.recalled == ["how_much"] and items["how_much"].recall and not items["dumplings"].recall
             and not items["friend"].recall)
     T.check("the recall sentence names the word and where it came from",
-            f"{ZH.items['beer'].text} came back from The Corner Bar and you got it with no hints."
+            f"{ZH.items['how_much'].text} came back from The Corner Bar and you got it with no hints."
             in summary.lines, summary.lines)
-    T.check("outcomes are this scene's only", items["beer"].outcomes == ["first_try"]
+    T.check("outcomes are this scene's only", items["how_much"].outcomes == ["first_try"]
             and items["friend"].outcomes == ["with_help"])
-    T.check("bar-only words are not market targets", "tea" not in items and "baijiu" not in items)
+    T.check("bar-only words are not market targets", "beer" not in items and "baijiu" not in items)
     T.check("last scene has no next scene", summary.next_scene is None)
     T.check("history holds the archived bar summary",
             [s.scene_id for s in j.history] == ["bar"] and j.history[0].counts.mastered == 2)
@@ -129,12 +129,12 @@ def test_edges() -> None:
     summary = build_summary(j, CONTENT)
     T.check("an untouched scene summarizes honestly",
             summary.counts.model_dump() == {"mastered": 0, "shaky": 0, "heard": 0,
-                                            "not_encountered": 11}
-            and summary.lines == ["0 of 11 words came up in The Corner Bar."], summary.lines)
-    record(j, "tea", "e1", highlighted=True)
+                                            "not_encountered": 12}
+            and summary.lines == ["0 of 12 words came up in The Corner Bar."], summary.lines)
+    record(j, "football", "e1", highlighted=True)
     one = build_summary(j, CONTENT)
     T.check("singular grammar for one shaky word",
-            f"{ZH.items['tea'].text} still needs a second look; expect a highlight next time."
+            f"{ZH.items['football'].text} still needs a second look; expect a highlight next time."
             in one.lines, one.lines)
     ja = started(enter_scene(new_journey(CONTENT, "sum3", language="ja-JP"), CONTENT))
     T.check("the summary speaks the journey's language",

@@ -212,6 +212,19 @@ def test_solidify_restores_key_hued_print() -> None:
     assert out[61, 61, 3] > 0 and out[150, 70, 3] == 255
 
 
+def test_solidify_keeps_real_holes_open() -> None:
+    # A dark bracket with a cut-out: the screen seen through it must stay transparent.
+    img = Image.new("RGB", (300, 300), (0, 0, 255))
+    d = ImageDraw.Draw(img)
+    d.rectangle((60, 60, 240, 240), fill=(25, 25, 28))
+    d.rectangle((120, 120, 180, 180), fill=(0, 0, 255))  # hole showing the blue screen
+    d.rectangle((80, 200, 140, 225), fill=(40, 60, 200))  # blue-ish print on the prop
+    out = np.asarray(solidify(soft_key_cutout(img), img)).astype(int)
+    assert out[150, 150, 3] == 0, "cut-out must stay open"
+    assert tuple(out[212, 110]) == (40, 60, 200, 255), "key-hued print is restored"
+    assert out[80, 80, 3] == 255
+
+
 def test_islands_and_trim_padding() -> None:
     img = Image.new("RGBA", (300, 300), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)

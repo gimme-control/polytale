@@ -73,8 +73,8 @@ def bar_by_tab(locale: str, content: Content = CONTENT) -> tuple[Journey, list[T
         reply(call("pay", amount=40, for_object_ids=["tab"]), call("set_flag", flag="tab_paid"),
               call("adjust_trust", delta=1, reason="paid her tab"),
               call("move_object", object_id="tab", to_zone="gone"),
-              call("reveal_clue", clue_id="waited"), call("reveal_clue", clue_id="market"),
-              say(lexicon_line(language, ["she", "night_market"]), mood="pleased")),
+              call("reveal_clue", clue_id="waited"), call("reveal_clue", clue_id="stall"),
+              say(lexicon_line(language, ["she", "fan_zone"]), mood="pleased")),
     ]
     attempts = [verb(1, "show", "photo"),
                 attempt(2, language.items["where"].roman or language.items["where"].text),
@@ -106,8 +106,9 @@ def market_by_dare(journey: Journey, locale: str, content: Content = CONTENT,
         reply(call("set_flag", flag="dare_taken"), call("adjust_trust", delta=1, reason="the dare"),
               call("move_object", object_id="chili", to_zone="gone"),
               call("move_object", object_id="scarf", to_zone="inventory"),
-              call("set_flag", flag="scarf_taken"), call("reveal_clue", clue_id="platform"),
-              say(lexicon_line(language, ["station", "number_two", "platform"]), mood="pleased")),
+              call("move_object", object_id="ticket", to_zone="inventory"),
+              call("reveal_clue", clue_id="gate"),
+              say(lexicon_line(language, ["gate", "number_two", "big_screen"]), mood="pleased")),
     ]
     text = language.items["too_expensive"]
     attempts = [*[attempt(100 + k, "?") for k in range(stall)], verb(11, "show", "photo"),
@@ -140,7 +141,7 @@ def test_opening() -> None:
         "turn", "lines", "narration", "mood", "zones", "events", "progress", "scene_complete",
         "summary", "game", "ending", "latency_ms"})
     T.check("the opening costs no clock", result.game.clock.minutes_left == 75
-            and result.game.clock.time == "22:40" and result.game.clock.minutes_total == 75)
+            and result.game.clock.time == "19:45" and result.game.clock.minutes_total == 75)
     line = result.lines[1]
     T.check("line ids are s{scene}-t{turn}-l{i} with journey audio urls",
             [ln.line_id for ln in result.lines] == ["s0-t0-l0", "s0-t0-l1"]
@@ -169,7 +170,7 @@ def test_opening() -> None:
             and "75 minutes left" in snapshot and "cash 60" in snapshot
             and "trust: 0" in snapshot and "carrying: photo, money" in snapshot)
     T.check("snapshot: every clue with its status; locked ones say what they need",
-            any(ln.strip().startswith("market |") and "LOCKED, still needs:" in ln
+            any(ln.strip().startswith("stall |") and "LOCKED, still needs:" in ln
                 and "flag photo_shown" in ln for ln in snapshot.splitlines())
             and "events to flag when they happen" in snapshot)
     T.check("snapshot: objects with price, where they can go and the player's verbs",
@@ -185,7 +186,7 @@ def test_opening() -> None:
             T.check(f"{label} raises", True)
 
 
-def test_ending_reunited() -> None:
+def test_ending_kickoff() -> None:
     j, bar = bar_by_tab("zh-CN")
     assert j.scene is not None
     photo, pay = bar[1], bar[3]
@@ -197,10 +198,10 @@ def test_ending_reunited() -> None:
             [c.id for c in photo.game.clues] == ["regular"]
             and photo.progress.goals_done == ["ask"] and photo.zones["photo"] == "counter")
     T.check("each player turn costs 3 minutes", [r.game.clock.minutes_left for r in bar]
-            == [75, 72, 69, 66] and pay.game.clock.time == "22:49")
+            == [75, 72, 69, 66] and pay.game.clock.time == "19:54")
     T.check("paying the tab: cash, trust, both clues, act complete, no ending yet",
             pay.game.wallet == 20 and pay.game.trust == 1
-            and [c.id for c in pay.game.clues] == ["regular", "waited", "market"]
+            and [c.id for c in pay.game.clues] == ["regular", "waited", "stall"]
             and pay.scene_complete and pay.summary is not None and pay.ending is None
             and pay.summary.next_scene is not None and pay.summary.next_scene.id == "market")
     j, market = market_by_dare(j, "zh-CN")
@@ -212,11 +213,11 @@ def test_ending_reunited() -> None:
             market[2].game.prices["dumplings"] == 8 and market[3].game.wallet == 12)
     final = market[-1]
     T.check("the dare opens platform 2: last act complete, the ending resolves on that turn",
-            final.scene_complete and final.ending is not None and final.ending.id == "reunited"
-            and final.ending.title == "Time to Spare" and j.game.ending_id == "reunited")
+            final.scene_complete and final.ending is not None and final.ending.id == "kickoff"
+            and final.ending.title == "Kickoff" and j.game.ending_id == "kickoff")
     assert final.ending is not None
     T.check("ending payload: art url and stats",
-            final.ending.art_url == "/api/scenes/market/art/art/ending_reunited.webp"
+            final.ending.art_url == "/api/scenes/market/art/art/ending_kickoff.webp"
             and final.ending.stats.model_dump() == {
                 "minutes_left": 45, "wallet": 12, "clues": 5,
                 "words_mastered": final.ending.stats.words_mastered,
@@ -235,17 +236,17 @@ def test_ending_reunited() -> None:
             T.check(f"after the ending, {label} raises", True)
     state = views.public_state(j, CONTENT)
     T.check("public state carries the ending, the story and no next scene",
-            state.ending is not None and state.ending.id == "reunited"
-            and state.story.title == "The Last Train" and state.summary is not None
+            state.ending is not None and state.ending.id == "kickoff"
+            and state.story.title == "Kickoff" and state.summary is not None
             and state.summary.next_scene is None
             and [c.status for c in state.scenes] == ["done", "done"])
 
 
-def test_ending_seconds_and_late() -> None:
+def test_ending_late_and_outside() -> None:
     j, _ = bar_by_tab("zh-CN")
     j, market = market_by_dare(j, "zh-CN", stall=14)  # 57 - 14*3 - 4*3 = 3 minutes left
-    T.check("the same path with the clock nearly gone ends 'by seconds'",
-            market[-1].ending is not None and market[-1].ending.id == "seconds"
+    T.check("the same path with the clock nearly gone ends 'First Goal' (ticket, but late)",
+            market[-1].ending is not None and market[-1].ending.id == "late"
             and market[-1].game.clock.minutes_left == 3)
 
     zh = CONTENT.language("zh-CN")
@@ -254,8 +255,8 @@ def test_ending_seconds_and_late() -> None:
     j, results = play(j, CONTENT, [idle] * 25, [attempt(i, "?") for i in range(25)])
     last = results[-1]
     T.check("25 idle turns run the clock out: the act ends and the fallback ending resolves",
-            last.scene_complete and last.ending is not None and last.ending.id == "late"
-            and last.game.clock.minutes_left == 0 and last.game.clock.time == "23:55"
+            last.scene_complete and last.ending is not None and last.ending.id == "outside"
+            and last.game.clock.minutes_left == 0 and last.game.clock.time == "21:00"
             and not results[-2].scene_complete)
     final_snapshot_client = FakeClient([idle])
     k = opened()
@@ -268,7 +269,7 @@ def test_ending_seconds_and_late() -> None:
             _snapshot_of(opened(), attempt(1, "?")))
 
 
-def test_ending_scarf() -> None:
+def test_ending_outside() -> None:
     zh = CONTENT.language("zh-CN")
     j, _ = bar_by_tab("zh-CN")
     j = enter_scene(j, CONTENT)
@@ -277,22 +278,24 @@ def test_ending_scarf() -> None:
         reply(say(lexicon_line(zh, ["noodles"], ["noodles"]))),
         reply(call("set_flag", flag="scarf_noticed"), call("reveal_clue", clue_id="scarf"),
               say(lexicon_line(zh, ["scarf"], ["scarf"]))),
-        reply(call("move_object", object_id="scarf", to_zone="inventory"),
-              call("set_flag", flag="scarf_taken"), say(lexicon_line(zh, ["friend"]))),
+        reply(call("set_flag", flag="ticket_grabbed"),
+              call("adjust_trust", delta=-1, reason="grabbed at the ticket"),
+              say(lexicon_line(zh, ["no_want"]))),
     ]
-    j, results = play(j, CONTENT, script, [verb(21, "point", "scarf"), verb(22, "take", "scarf")],
+    j, results = play(j, CONTENT, script, [verb(21, "point", "scarf"), verb(22, "take", "ticket")],
                       opening=True)
-    T.check("clock out holding the scarf: 'Missed It, But…' (fail forward, never a dead end)",
-            results[-1].ending is not None and results[-1].ending.id == "scarf"
+    T.check("clock out with no ticket: the text-only fallback (fail forward, never a dead end)",
+            results[-1].ending is not None and results[-1].ending.id == "outside"
             and results[-1].ending.art_url is not None
-            and results[-1].ending.art_url.endswith("ending_late.webp"))
+            and results[-1].ending.art_url.endswith("ending_late.webp")
+            and results[-1].game.trust == -1 and results[-1].zones["ticket"] == "display")
     k, _ = bar_by_tab("zh-CN")
     k = enter_scene(k, CONTENT)
     k, _ = play(k, CONTENT, [reply(say(lexicon_line(zh, ["noodles"], ["noodles"])))], [],
                 opening=True)
     summary = finish_scene(k, CONTENT)
     T.check("finishing the last act by hand also resolves an ending",
-            k.game.ending_id == "late" and summary.next_scene is None)
+            k.game.ending_id == "outside" and summary.next_scene is None)
     early = opened()
     finish_scene(early, CONTENT)
     T.check("finishing act 1 early does NOT end the story",
@@ -360,7 +363,7 @@ def test_error_then_retry() -> None:
     zh = CONTENT.language("zh-CN")
     j = opened()
     client = FakeClient([
-        reply(call("reveal_clue", clue_id="market"), say(lexicon_line(zh, ["night_market"]))),
+        reply(call("reveal_clue", clue_id="stall"), say(lexicon_line(zh, ["fan_zone"]))),
         reply(say(lexicon_line(zh, ["left"]))),
     ])
     trace: list[dict[str, Any]] = []
@@ -371,8 +374,8 @@ def test_error_then_retry() -> None:
             and trace[0]["calls"][-1]["receipt"].startswith("ERROR: say rejected")
             and result.game.clues == [] and not result.scene_complete)
     T.check("the refused line never reaches the transcript",
-            zh.items["night_market"].text not in j2.model_dump_json())
-    never = [reply(call("reveal_clue", clue_id="market"), say(lexicon_line(zh, ["beer"])))] * 6
+            zh.items["fan_zone"].text not in j2.model_dump_json())
+    never = [reply(call("reveal_clue", clue_id="stall"), say(lexicon_line(zh, ["beer"])))] * 6
     try:
         run_turn(j, CONTENT, attempt(2, "x"), client=FakeClient(list(never)), models=MODELS)
         T.check("six failing rounds raise TurnError", False)
@@ -450,8 +453,8 @@ def test_fading_is_soft() -> None:
     T.check("a with_help word is owed an unsupported pass", vocab.owed_items(
         j, CONTENT.scene("bar")) == ["beer"])
     j.game.flags += ["photo_shown", "tab_paid"]
-    client = FakeClient([reply(call("reveal_clue", clue_id="market"),
-                               say(lexicon_line(zh, ["night_market"])))])
+    client = FakeClient([reply(call("reveal_clue", clue_id="stall"),
+                               say(lexicon_line(zh, ["fan_zone"])))])
     j2, result = run_turn(j, CONTENT, attempt(2, "ta zai nar"), client=client, models=MODELS)
     snapshot = client.models.calls[0]["contents"][0].parts[0].text
     T.check("...which is a soft line in the snapshot and NEVER gates the story (no v2 nudge)",
@@ -503,7 +506,7 @@ def test_payload_hygiene() -> None:
     j, results = bar_by_tab("zh-CN")
     mid = results[2]
     secrets = [CONTENT.scene("bar").npc.secrets, CONTENT.scene("bar").npc.wants,
-               CONTENT.journey.gm_brief, CONTENT.scene("bar").clue("market").text]  # type: ignore[union-attr]
+               CONTENT.journey.gm_brief, CONTENT.scene("bar").clue("stall").text]  # type: ignore[union-attr]
     k = opened()
     state = views.public_state(k, CONTENT)
     payloads = {"public_state": state.model_dump_json(), "turn_result": mid.model_dump_json(),
@@ -516,11 +519,11 @@ def test_payload_hygiene() -> None:
                 and not any(t in blob for t in unspoken))
     T.check("scene view exposes verbs with labels, never item ids or targets",
             state.scene is not None and '"item_id"' not in state.scene.model_dump_json()
-            and [a.model_dump() for a in state.scene.objects[6].actions]
+            and [a.model_dump() for a in state.scene.objects[8].actions]
             == [{"id": "show", "label": "Show"}, {"id": "give", "label": "Give"}])
     T.check("game view mirrors the ledgers",
             state.game.model_dump() == {
-                "wallet": 60, "clock": {"label": "Last train", "time": "22:40",
+                "wallet": 60, "clock": {"label": "Kickoff", "time": "19:45",
                                         "minutes_left": 75, "minutes_total": 75},
                 "trust": 0, "clues": [], "difficulty": "story",
                 "prices": {"beer": 20, "water": 5, "tea": 15, "baijiu": 15, "tab": 40}}
@@ -536,9 +539,9 @@ def test_payload_hygiene() -> None:
 
 if __name__ == "__main__":
     T.run("opening", test_opening)
-    T.run("ending: reunited", test_ending_reunited)
-    T.run("endings: seconds and late", test_ending_seconds_and_late)
-    T.run("ending: scarf", test_ending_scarf)
+    T.run("ending: kickoff", test_ending_kickoff)
+    T.run("endings: late and clock-out", test_ending_late_and_outside)
+    T.run("ending: outside", test_ending_outside)
     T.run("verbs and attempts", test_verbs_and_attempts)
     T.run("unpaid is remembered", test_unpaid_is_remembered)
     T.run("error then retry", test_error_then_retry)

@@ -284,6 +284,7 @@ class JourneyPlan(BaseModel):
 
     title: str = Field(min_length=1)
     tagline: str = ""
+    art: str = ""  # title art, relative to the content root
     premise: str = Field(min_length=1)
     gm_brief: str = Field(min_length=1)
     wallet: int = Field(ge=0)

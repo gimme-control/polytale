@@ -19,6 +19,7 @@ from core.content import (
     TRUST_MAX,
     TRUST_MIN,
     GoalWhen,
+    Item,
     Language,
     Scene,
     is_latin,
@@ -28,6 +29,7 @@ from core.state import (
     ClueEntry,
     ClueView,
     Journey,
+    LearnerEntry,
     SceneEventEntry,
     SceneRun,
     Segment,
@@ -161,6 +163,24 @@ def exec_move_object(journey: Journey, args: dict[str, Any], ctx: ToolContext) -
     return _ok(journey, ctx, f"{oid} moved {before} -> {zone}.{unlit}{_goal_note(journey, scene)}")
 
 
+def _squash(text: str) -> str:
+    """Letters and digits only, no marks, no case: how typed and heard input is compared."""
+    plain = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in plain if ch.isalnum() and not unicodedata.combining(ch)).casefold()
+
+
+def player_said(attempt: Attempt, item: Item) -> bool:
+    """True when the player's own input really contains the word: in its script, or in its
+    romanization however they typed it (no marks, any spacing), or as the recognizer heard it.
+    A word of their own language that merely MEANS it does not count."""
+    heard = [_squash(attempt.transcript), _squash(attempt.romanized or "")]
+    forms = [[_squash(part) for part in item.parts]]
+    if item.roman:
+        forms.append([_squash(item.roman)])
+    return any(all(part and part in source for part in form)
+               for form in forms for source in heard if source)
+
+
 def exec_record_item(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
     attempt = ctx.attempt
     if attempt is None:
@@ -172,13 +192,18 @@ def exec_record_item(journey: Journey, args: dict[str, Any], ctx: ToolContext) -
     if result not in RESULTS:
         return _err(journey, ctx, f"result must be one of {', '.join(RESULTS)}")
     exchange = _run(journey).exchange
-    if attempt.input_mode == "tap" and item_id not in exchange.posed_item_ids:
-        return _ok(
-            journey, ctx,
-            f"nothing recorded for {item_id}: a tap only shows understanding of a word that "
-            "was in your last lines",
-        )
     produced = bool(args.get("produced")) and attempt.input_mode != "tap"
+    if produced and not player_said(attempt, ctx.language.items[item_id]):
+        return _ok(journey, ctx, f"nothing recorded for {item_id}: the player's own words do "
+                                 "not contain it (a foreign word that means it is not it)")
+    language = ctx.language
+    if attempt.input_mode != "tap" and not any(
+            player_said(attempt, item) for item in language.items.values()):
+        return _ok(journey, ctx, f"nothing recorded for {item_id}: nothing the player said is "
+                                 f"{language.name}, so it shows nothing about their {language.name}")
+    if not produced and item_id not in exchange.posed_item_ids:
+        return _ok(journey, ctx, f"nothing recorded for {item_id}: they did not say it, and it "
+                                 "was not in your last lines for them to act on")
     stamped, is_new = vocab.record_result(
         journey, item_id=item_id, understood=result == "understood", produced=produced,
         attempt_id=attempt.attempt_id,
@@ -335,6 +360,15 @@ def spoken(segments: Sequence[Any], part: str, word_spacing: bool) -> bool:
     return any(texts[i:i + len(wanted)] == wanted for i in range(len(texts)))
 
 
+def _has_been_out(run: SceneRun, object_id: str) -> bool:
+    """True once the player has used the object or it has changed hands in this act."""
+    return any(
+        (isinstance(e, LearnerEntry) and e.tapped_object_id == object_id)
+        or (isinstance(e, SceneEventEntry) and e.object_id == object_id)
+        for e in run.transcript
+    )
+
+
 def _validate_line(
     journey: Journey, raw: Any, index: int, ctx: ToolContext
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -397,6 +431,12 @@ def _validate_line(
             return None, f"{where}.highlight_object_ids: unknown object '{oid}'. Valid: {valid}"
         if run.zones.get(oid) == "gone":
             return None, f"{where}: {oid} is gone and cannot be highlighted"
+        if (run.zones.get(oid) == "inventory" and "pay" not in obj.actions
+                and not _has_been_out(run, oid)):
+            return None, (
+                f"{where}: {oid} is still in the player's pocket. Your character has never "
+                "seen it and cannot point at it; drop that highlight"
+            )
         if obj.item_id not in item_ids:
             return None, (
                 f"{where} highlights {oid} but does not say its word "

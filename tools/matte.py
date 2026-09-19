@@ -584,7 +584,11 @@ def solidify(cut: Image.Image, source: Image.Image, *, rim: int = 3) -> Image.Im
     src = np.asarray(source.convert("RGB"))
     # High threshold: a translucent contact shadow must not count as the prop body.
     body = _fill_holes(_largest_cc(arr[..., 3] >= 215))
-    core = _erode(body, times=rim)
+    # Backdrop seen THROUGH the prop (a bracket's cut-out, a loop) keyed to alpha 0 and
+    # still is the screen colour: that stays a hole. Key-HUED print keyed only partly.
+    key = sample_backdrop_rgb(src)
+    see_through = (arr[..., 3] <= 8) & (_color_dist(src, key) <= 45.0)
+    core = _erode(body, times=rim) & ~_dilate(see_through, times=rim)
     arr[..., :3] = np.where(core[..., None], src, arr[..., :3])
     arr[..., 3] = np.where(core, 255, arr[..., 3])
     return Image.fromarray(arr, mode="RGBA")

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 import media
 from core import dm, phrasebook
-from core.content import resolve_art_path
+from core.content import CONTENT_ROOT, resolve_art_path
 from core.state import Attempt, Journey, Line, Phrase, set_difficulty, set_persona
 from core.views import (
     art_url,
@@ -146,6 +146,16 @@ def catalog() -> dict[str, Any]:
                    for s in (c.scene(sid) for sid in c.journey.scenes)],
         "personas": [{"id": p.id, "label": p.label, "blurb": p.blurb} for p in c.personas],
     }
+
+
+@app.get("/api/story/art")
+def story_art() -> FileResponse:
+    """The story's title art (``journey.json`` → ``art``, confined to the content root)."""
+    rel = content().journey.art
+    file = (CONTENT_ROOT / rel).resolve()
+    if not rel or not file.is_relative_to(CONTENT_ROOT.resolve()) or not file.is_file():
+        raise HTTPException(404, "no title art")
+    return FileResponse(file, headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/api/scenes/{scene_id}/art/{path:path}")

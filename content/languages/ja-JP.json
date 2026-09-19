@@ -178,30 +178,6 @@
       "gloss": "the bill / tab",
       "kind": "noun"
     },
-    "night_market": {
-      "text": "夜市",
-      "roman": "yoichi",
-      "gloss": "night market",
-      "kind": "noun"
-    },
-    "station": {
-      "text": "駅",
-      "roman": "eki",
-      "gloss": "station",
-      "kind": "noun"
-    },
-    "platform": {
-      "text": "ホーム",
-      "roman": "hōmu",
-      "gloss": "platform",
-      "kind": "noun"
-    },
-    "train": {
-      "text": "電車",
-      "roman": "densha",
-      "gloss": "train",
-      "kind": "noun"
-    },
     "number_two": {
       "text": "二番",
       "roman": "niban",
@@ -274,10 +250,76 @@
       "gloss": "20",
       "kind": "number"
     },
-    "thirty": {
-      "text": "三十",
-      "roman": "sanjū",
-      "gloss": "30",
+    "football": {
+      "text": "ボール",
+      "roman": "bōru",
+      "gloss": "football (the ball)",
+      "kind": "noun"
+    },
+    "ticket": {
+      "text": "チケット",
+      "roman": "chiketto",
+      "gloss": "ticket",
+      "kind": "noun"
+    },
+    "flag": {
+      "text": "旗",
+      "roman": "hata",
+      "gloss": "flag",
+      "kind": "noun"
+    },
+    "tv": {
+      "text": "テレビ",
+      "roman": "terebi",
+      "gloss": "TV",
+      "kind": "noun"
+    },
+    "match": {
+      "text": "試合",
+      "roman": "shiai",
+      "gloss": "the match",
+      "kind": "noun"
+    },
+    "goal": {
+      "text": "ゴール",
+      "roman": "gōru",
+      "gloss": "goal!",
+      "kind": "phrase"
+    },
+    "go_team": {
+      "text": "がんばれ",
+      "roman": "ganbare",
+      "gloss": "come on! (cheering a team)",
+      "kind": "phrase"
+    },
+    "gate": {
+      "text": "ゲート",
+      "roman": "gēto",
+      "gloss": "gate",
+      "kind": "noun"
+    },
+    "big_screen": {
+      "text": "スクリーン",
+      "roman": "sukurīn",
+      "gloss": "the big screen",
+      "kind": "noun"
+    },
+    "fan_zone": {
+      "text": "ファンゾーン",
+      "roman": "fan zōn",
+      "gloss": "the fan zone",
+      "kind": "noun"
+    },
+    "six": {
+      "text": "六",
+      "roman": "roku",
+      "gloss": "6",
+      "kind": "number"
+    },
+    "forty": {
+      "text": "四十",
+      "roman": "yonjū",
+      "gloss": "40",
       "kind": "number"
     }
   }

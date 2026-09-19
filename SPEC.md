@@ -6,7 +6,8 @@
 
 ## v3: the game layer
 
-**Pitch.** *The Last Train.* You land in a Chinese city at night with a dead phone. Your friend
+**Pitch.** *Kickoff* (re-themed from "The Last Train" for the World Cup theme; same structure). World
+Cup final night: Mei has your ticket, your phone is dead, find her before kickoff. ORIGINAL SKETCH: You land in a Chinese city at night with a dead phone. Your friend
 Mei was meant to meet you; all you have is a photo of her and the name of a bar. Find her before
 the last train. Nobody speaks English. Two acts reuse the existing scenes: the bar (the bartender
 knows Mei but has reasons to be cagey) and the night market (the vendor has something of hers).
@@ -132,6 +133,21 @@ no-op; `pay` / `adjust_trust` / `record_item` are refused in the opening. The cl
 The snapshot tells the GM when the clock runs out with the turn in play, lists each clue as KNOWN
 / CAN COME OUT NOW / LOCKED (with what each way still lacks), and lists what was served but not
 paid for.
+
+**Vocabulary (v3 additions).** `record_item(produced=true)` is verified by code against the
+player's OWN input: the item's text, or its romanization however typed (no marks, any spacing),
+or the recognizer's romanization must actually be in the attempt; a support-language word that
+merely means it records nothing. `produced=false` (understanding) records only for a word that was
+in the character's last lines. Both cases are OK receipts, never ERRORs. A word looked up in the
+phrasebook during the exchange stamps `with_help`.
+
+**`say` guards (structured data only, never prose).** A highlighted object's own word must be
+in that line; an object that is `gone` cannot be lit; an object still in the player's `inventory`
+that they have never used or handed over cannot be lit (the character has not seen it; things
+with a `pay` verb are exempt); a clue's `key_items` cannot be spoken before the clue is revealed.
+
+**Story art.** `journey.json.art` (relative to `content/`) is served at `GET /api/story/art`;
+`StoryView.art_url` carries that URL (null when no art is authored).
 
 **Flow.** An act completes when all its goals are done OR the clock hits zero. The ending resolves
 (first match) when the LAST act completes or the clock runs out in any act; `TurnResult.ending` is

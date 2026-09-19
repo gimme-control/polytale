@@ -178,30 +178,6 @@
       "gloss": "the bill / tab",
       "kind": "noun"
     },
-    "night_market": {
-      "text": "夜市",
-      "roman": "yèshì",
-      "gloss": "night market",
-      "kind": "noun"
-    },
-    "station": {
-      "text": "车站",
-      "roman": "chēzhàn",
-      "gloss": "station",
-      "kind": "noun"
-    },
-    "platform": {
-      "text": "站台",
-      "roman": "zhàntái",
-      "gloss": "platform",
-      "kind": "noun"
-    },
-    "train": {
-      "text": "火车",
-      "roman": "huǒchē",
-      "gloss": "train",
-      "kind": "noun"
-    },
     "number_two": {
       "text": "二号",
       "roman": "èr hào",
@@ -274,10 +250,76 @@
       "gloss": "20",
       "kind": "number"
     },
-    "thirty": {
-      "text": "三十",
-      "roman": "sānshí",
-      "gloss": "30",
+    "football": {
+      "text": "足球",
+      "roman": "zúqiú",
+      "gloss": "football (the ball)",
+      "kind": "noun"
+    },
+    "ticket": {
+      "text": "票",
+      "roman": "piào",
+      "gloss": "ticket",
+      "kind": "noun"
+    },
+    "flag": {
+      "text": "旗子",
+      "roman": "qízi",
+      "gloss": "flag",
+      "kind": "noun"
+    },
+    "tv": {
+      "text": "电视",
+      "roman": "diànshì",
+      "gloss": "TV",
+      "kind": "noun"
+    },
+    "match": {
+      "text": "比赛",
+      "roman": "bǐsài",
+      "gloss": "the match",
+      "kind": "noun"
+    },
+    "goal": {
+      "text": "进球",
+      "roman": "jìnqiú",
+      "gloss": "goal!",
+      "kind": "phrase"
+    },
+    "go_team": {
+      "text": "加油",
+      "roman": "jiāyóu",
+      "gloss": "come on! (cheering a team)",
+      "kind": "phrase"
+    },
+    "gate": {
+      "text": "门",
+      "roman": "mén",
+      "gloss": "gate",
+      "kind": "noun"
+    },
+    "big_screen": {
+      "text": "大屏幕",
+      "roman": "dà píngmù",
+      "gloss": "the big screen",
+      "kind": "noun"
+    },
+    "fan_zone": {
+      "text": "球迷广场",
+      "roman": "qiúmí guǎngchǎng",
+      "gloss": "the fan zone",
+      "kind": "noun"
+    },
+    "six": {
+      "text": "六",
+      "roman": "liù",
+      "gloss": "6",
+      "kind": "number"
+    },
+    "forty": {
+      "text": "四十",
+      "roman": "sìshí",
+      "gloss": "40",
       "kind": "number"
     }
   }

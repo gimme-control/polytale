@@ -27,15 +27,15 @@ BAR, MARKET = CONTENT.scene("bar"), CONTENT.scene("market")
 ZH = CONTENT.language("zh-CN")
 
 
-def setup(scene_id: str = "bar", mode: str | None = "text",
-          tapped: str | None = None) -> tuple[Journey, ToolContext]:
+def setup(scene_id: str = "bar", mode: str | None = "text", tapped: str | None = None,
+          said: str = "pijiu", romanized: str | None = None) -> tuple[Journey, ToolContext]:
     journey = enter_scene(new_journey(CONTENT, "tools1", language="zh-CN"), CONTENT, scene_id)
     assert journey.scene is not None
     journey.scene.started = True
     attempt = None
     if mode is not None:
-        attempt = Attempt(attempt_id="att1", input_mode=mode, transcript="pijiu",  # type: ignore[arg-type]
-                          tapped_object_id=tapped)
+        attempt = Attempt(attempt_id="att1", input_mode=mode, transcript=said,  # type: ignore[arg-type]
+                          romanized=romanized, tapped_object_id=tapped)
     return journey, ToolContext(scene=CONTENT.scene(scene_id), language=ZH, attempt=attempt,
                                 mastered=vocab.mastered_items(journey))
 
@@ -178,14 +178,14 @@ def test_trust() -> None:
     k2ctx = ToolContext(scene=BAR, language=ZH, attempt=ctx.attempt)
     receipt = execute("adjust_trust", j, {"delta": 1, "reason": "toasted"}, k2ctx)
     T.check("the receipt says which clues just became revealable",
-            "You may now reveal:" in receipt and "market" in receipt, receipt)
+            "You may now reveal:" in receipt and "stall" in receipt, receipt)
 
 
 def test_clue_gating() -> None:
     j, ctx = setup()
     run = j.scene
     assert run is not None
-    locked = execute("reveal_clue", j, {"clue_id": "market"}, ctx)
+    locked = execute("reveal_clue", j, {"clue_id": "stall"}, ctx)
     T.check("a locked clue is refused: the GM cannot leak it early",
             is_error(locked) and "stays secret" in locked and j.game.clues == []
             and "flag photo_shown" in locked and "trust 2+ (now 0)" in locked, locked)
@@ -193,7 +193,7 @@ def test_clue_gating() -> None:
     j.game.flags.append("photo_shown")
     T.check("the photo alone opens 'regular' but not 'market'",
             not is_error(execute("reveal_clue", j, {"clue_id": "regular"}, ctx))
-            and is_error(execute("reveal_clue", j, {"clue_id": "market"}, ctx)))
+            and is_error(execute("reveal_clue", j, {"clue_id": "stall"}, ctx)))
     entry = next(e for e in run.transcript if isinstance(e, ClueEntry))
     T.check("a revealed clue lands in the transcript with its notebook text",
             entry.clue.id == "regular" and entry.clue.title == "He knows her"
@@ -205,9 +205,9 @@ def test_clue_gating() -> None:
 
     j.game.trust["bar"] = 1
     T.check("way 3 needs BOTH the baijiu and trust 1",
-            is_error(execute("reveal_clue", j, {"clue_id": "market"}, ctx)))
+            is_error(execute("reveal_clue", j, {"clue_id": "stall"}, ctx)))
     j.game.flags.append("drank_baijiu")
-    receipt = execute("reveal_clue", j, {"clue_id": "market"}, ctx)
+    receipt = execute("reveal_clue", j, {"clue_id": "stall"}, ctx)
     T.check("...and opens once both hold; the goal completes itself",
             not is_error(receipt) and "Goal done: trail" in receipt
             and "ALL GOALS DONE" in receipt and run.goals_done == ["ask", "trail"], receipt)
@@ -216,19 +216,19 @@ def test_clue_gating() -> None:
     k.game.flags += ["photo_shown"]
     k.game.trust["bar"] = 2
     T.check("way 2: trust alone (with the photo) opens it",
-            not is_error(execute("reveal_clue", k, {"clue_id": "market"}, kctx)))
+            not is_error(execute("reveal_clue", k, {"clue_id": "stall"}, kctx)))
     m, mctx = setup("market")
     assert m.scene is not None
     m.game.flags.append("photo_shown_lin")
     m.game.trust["market"] = 1
     T.check("paid_at_least counts cash spent in THIS scene",
-            is_error(execute("reveal_clue", m, {"clue_id": "platform"}, mctx)))
+            is_error(execute("reveal_clue", m, {"clue_id": "gate"}, mctx)))
     m.game.spent = 50  # spent elsewhere does not count
     T.check("...money spent in another act does not count",
-            is_error(execute("reveal_clue", m, {"clue_id": "platform"}, mctx)))
+            is_error(execute("reveal_clue", m, {"clue_id": "gate"}, mctx)))
     execute("pay", m, {"amount": 12, "for_object_ids": ["dumplings"]}, mctx)
     T.check("...a paying customer with trust 1 gets it",
-            not is_error(execute("reveal_clue", m, {"clue_id": "platform"}, mctx)))
+            not is_error(execute("reveal_clue", m, {"clue_id": "gate"}, mctx)))
 
 
 def test_flags_and_goals() -> None:
@@ -255,27 +255,32 @@ def test_flags_and_goals() -> None:
     T.check("setting a flag twice is an OK no-op",
             "already set" in execute("set_flag", j, {"flag": "photo_shown"}, ctx)
             and len(run.transcript) == n)
-    execute("reveal_clue", j, {"clue_id": "market"}, ctx)
+    execute("reveal_clue", j, {"clue_id": "stall"}, ctx)
     T.check("the last goal says the act ends", run.goals_done == ["ask", "trail"])
 
 
 def test_giveaway_words() -> None:
     j, ctx = setup()
-    leak = say_args(lexicon_line(ZH, ["she", "night_market"]))
+    leak = say_args(lexicon_line(ZH, ["she", "fan_zone"]))
     receipt = execute("say", j, leak, ctx)
     T.check("a locked clue's giveaway word cannot be spoken: the line is refused",
             is_error(receipt) and "still LOCKED" in receipt and ctx.terminal is None, receipt)
     j.game.flags += ["photo_shown", "tab_paid"]
     receipt = execute("say", j, leak, ctx)
     T.check("when the clue CAN come out, saying it without reveal_clue is refused too",
-            is_error(receipt) and "call reveal_clue(market)" in receipt, receipt)
-    execute("reveal_clue", j, {"clue_id": "market"}, ctx)
+            is_error(receipt) and "call reveal_clue(stall)" in receipt, receipt)
+    execute("reveal_clue", j, {"clue_id": "stall"}, ctx)
     T.check("once revealed, the word is free",
             not is_error(execute("say", j, leak, ctx)) and ctx.terminal is not None)
     m, mctx = setup("market")
     T.check("the market's secret has several giveaway words",
             all(is_error(execute("say", m, say_args(lexicon_line(ZH, [w])), mctx))
-                for w in ("station", "platform", "number_two", "train")))
+                for w in ("gate", "number_two", "big_screen")))
+    T.check("...but she may talk about the ticket itself before she gives it up",
+            not is_error(execute("say", m, say_args(lexicon_line(ZH, ["ticket"], ["ticket"])),
+                                 mctx)))
+    T.check("a bought flag is a flag (requires_paid)",
+            is_error(execute("set_flag", m, {"flag": "flag_bought"}, mctx)))
     T.check("ordinary words are never blocked",
             not is_error(execute("say", m, say_args(lexicon_line(ZH, ["noodles", "spicy"])), mctx)))
     T.check("ERROR: the dare needs food that was paid for (chili on nothing does not count)",
@@ -304,7 +309,41 @@ def test_record_item() -> None:
         ("bad result", {"item_id": "tea", "result": "clarified", "produced": False}),
     ):
         T.check(f"ERROR: {label}", is_error(execute("record_item", j, args, ctx)))
-    j, ctx = setup()
+    for label, kwargs, item, counted in (
+        ("typed romanization without marks", {"said": "PiJiu!"}, "beer", True),
+        ("typed in its own script, inside a sentence",
+         {"said": ZH.items["want"].text + ZH.items["beer"].text}, "beer", True),
+        ("spaced romanization of a phrase", {"said": "ta zai nar?"}, "where", True),
+        ("speech: the recognizer's romanization counts even when the characters are off",
+         {"mode": "speech", "said": "\u76ae\u7403", "romanized": "pí jiǔ"}, "beer", True),
+        ("a support-language word that merely MEANS it", {"said": "hello??"}, "hello", False),
+        ("a different word entirely", {"said": "cha"}, "beer", False),
+    ):
+        k, kctx = setup(**kwargs)  # type: ignore[arg-type]
+        execute("record_item", k, {"item_id": item, "result": "understood", "produced": True},
+                kctx)
+        T.check(f"produced is checked against the player's own input: {label}",
+                (item in k.vocab) == counted, k.vocab.get(item))
+    k, kctx = setup(said="unbelievable")
+    assert k.scene is not None
+    k.scene.exchange = Exchange(posed_item_ids=["hello"])
+    receipt = execute("record_item", k, {"item_id": "hello", "result": "understood",
+                                         "produced": False}, kctx)
+    T.check("input with no word of the language shows nothing, even for a word just posed",
+            "nothing recorded" in receipt and "hello" not in k.vocab, receipt)
+    k, kctx = setup(said="hao")
+    assert k.scene is not None
+    k.scene.exchange = Exchange(posed_item_ids=["beer"])
+    execute("record_item", k, {"item_id": "beer", "result": "understood", "produced": False}, kctx)
+    T.check("...while answering in the language about a posed word does count",
+            k.vocab["beer"].results[0].outcome == "first_try"
+            and not k.vocab["beer"].results[0].produced)
+    k, kctx = setup(said="hao")
+    receipt = execute("record_item", k, {"item_id": "football", "result": "understood",
+                                         "produced": False}, kctx)
+    T.check("understanding without saying it needs the word to have been in the last lines",
+            not is_error(receipt) and "nothing recorded" in receipt and "football" not in k.vocab)
+    j, ctx = setup(said="pengyou zai nar")
     assert j.scene is not None
     j.scene.exchange = Exchange(phrasebook_item_ids=["where"])
     execute("record_item", j, {"item_id": "where", "result": "understood", "produced": True}, ctx)
@@ -321,7 +360,7 @@ def test_record_item() -> None:
     j.scene.exchange = Exchange(posed_item_ids=["tea"])
     receipt = execute("record_item", j, {"item_id": "beer", "result": "understood",
                                          "produced": True}, ctx)
-    T.check("a tap on a word that was not posed records nothing (OK, not ERROR)",
+    T.check("a tap on a word that was not in the last lines records nothing (OK, not ERROR)",
             not is_error(receipt) and "nothing recorded" in receipt and "beer" not in j.vocab)
     j.scene.exchange = Exchange(posed_item_ids=["beer"])
     execute("record_item", j, {"item_id": "beer", "result": "understood", "produced": True}, ctx)
@@ -353,13 +392,13 @@ def test_say() -> None:
             ctx.terminal["lines"][0]["segments"][1].r == "")
     j, ctx = setup()
     execute("say", j, say_args({"segments": [{"t": ZH.items["beer"].text, "r": "PI-JIU"},
-                                             {"t": ZH.items["thirty"].text, "r": "x"}],
+                                             {"t": ZH.items["forty"].text, "r": "x"}],
                                 "item_ids": [], "highlight_object_ids": ["beer"]}), ctx)
     assert ctx.terminal is not None
     said = ctx.terminal["lines"][0]
     T.check("lexicon words (support words too) take the lexicon's romanization and are tagged",
-            [s.r for s in said["segments"]] == [ZH.items["beer"].roman, ZH.items["thirty"].roman]
-            and said["item_ids"] == ["beer", "thirty"])
+            [s.r for s in said["segments"]] == [ZH.items["beer"].roman, ZH.items["forty"].roman]
+            and said["item_ids"] == ["beer", "forty"])
     word = {"t": ZH.items["tea"].text, "r": ZH.items["tea"].roman}
     j, ctx = setup()
     execute("say", j, say_args({"segments": [word], "item_ids": ["beer", "tea"],
@@ -431,6 +470,15 @@ def test_highlight_gate() -> None:
     T.check("gate judges the turn-start record, not a result from this same response",
             j.vocab["beer"].state == "mastered" and not is_error(
                 execute("say", j, say_args(lexicon_line(ZH, ["beer"], ["beer"])), ctx)))
+    T.check("the character cannot point at what is still in the player's pocket",
+            is_error(execute("say", j, say_args(lexicon_line(ZH, ["friend"], ["photo"])), ctx))
+            and not is_error(execute("say", j, say_args(lexicon_line(ZH, ["money"], ["money"])),
+                                     ctx)))
+    execute("move_object", j, {"object_id": "photo", "to_zone": "counter"}, ctx)
+    execute("move_object", j, {"object_id": "photo", "to_zone": "inventory"}, ctx)
+    ctx.terminal = None
+    T.check("...once it has been shown or handed over, it can be lit even back in the pocket",
+            not is_error(execute("say", j, say_args(lexicon_line(ZH, ["friend"], ["photo"])), ctx)))
     j.scene.zones["tea"] = "gone"
     ctx.terminal = None
     T.check("an object that is gone cannot be highlighted", is_error(
@@ -445,11 +493,11 @@ def test_declarations() -> None:
     T.check("ids are enums from the scene",
             decls["move_object"]["parameters"]["properties"]["to_zone"]["enum"] == MARKET.zones
             and decls["reveal_clue"]["parameters"]["properties"]["clue_id"]["enum"]
-            == ["scarf", "platform"]
+            == ["scarf", "gate"]
             and decls["set_flag"]["parameters"]["properties"]["flag"]["enum"]
             == [f.id for f in MARKET.flags]
             and decls["set_price"]["parameters"]["properties"]["object_id"]["enum"]
-            == ["noodles", "dumplings", "beer"]
+            == ["noodles", "dumplings", "beer", "flag"]
             and "scarf" not in decls["pay"]["parameters"]["properties"]["for_object_ids"]["items"][
                 "enum"])
     say = decls["say"]["parameters"]
