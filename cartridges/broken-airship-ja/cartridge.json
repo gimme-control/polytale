@@ -1,0 +1,404 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "id": "broken-airship-ja",
+    "name": "The Broken Airship",
+    "tagline": "A storm is coming. The engineer speaks only Japanese. Help her get the airship off the ground.",
+    "locale": "en-US"
+  },
+  "setting": {
+    "premise": "A small hilltop airfield at dusk, with storm clouds rolling in fast. The player has just woken up beside a grounded wooden airship. Its engineer, Hana, must open the locked engine panel with the engine key and load the route map before the storm arrives. The player does not speak Japanese yet; Hana speaks almost no English. They can only succeed by communicating: she shows, points, and acts; the player asks for what is needed.",
+    "location": {
+      "id": "loc.airfield",
+      "name": "Hilltop Airfield",
+      "description": "A windswept grass airfield. A patched wooden airship is tethered beside a toolbox and a crate. The engine panel on the hull is shut with a keyhole. Dark clouds are gathering on the horizon.",
+      "art": {
+        "base": "art/plate_base.png",
+        "variants": [
+          {
+            "id": "panel_open",
+            "when": {
+              "fx.engine_panel": "open"
+            },
+            "image": "art/plate_panel_open.png"
+          },
+          {
+            "id": "launched",
+            "when": {
+              "fx.airship": "launched"
+            },
+            "image": "art/plate_launched.png"
+          }
+        ]
+      }
+    }
+  },
+  "npcs": [
+    {
+      "id": "npc.engineer",
+      "name": "Hana",
+      "role": "airship engineer",
+      "persona": "Hana, the airship's engineer: capable, warm, and hurried by the incoming storm, but never impatient with the player. She communicates with very short Japanese lines, pointing, holding things up, offering them, and acting things out. She smiles when understood, glances at the sky when worried, and never explains grammar.",
+      "english": "Knows only: okay, good, no, yes. She uses them rarely, only to avoid total breakdown.",
+      "voice": {
+        "elevenlabs_voice_id": "",
+        "gemini_voice": "Kore",
+        "style": "warm, clear, unhurried; natural standard Japanese pronunciation"
+      },
+      "art": {
+        "sprite": "art/engineer.png",
+        "portrait": "art/engineer_portrait.png"
+      },
+      "stage": {
+        "x": 0.75,
+        "y": 0.92,
+        "height": 0.5,
+        "hand": {
+          "x": 0.137,
+          "y": 0.17
+        }
+      }
+    }
+  ],
+  "objects": [
+    {
+      "id": "obj.engine_key",
+      "concept_id": "object.key",
+      "icon": "art/icon_key.png",
+      "holder": "npc.engineer"
+    },
+    {
+      "id": "obj.route_map",
+      "concept_id": "object.map",
+      "icon": "art/icon_map.png",
+      "holder": "npc.engineer"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "fx.engine_panel",
+      "name": "engine panel",
+      "states": [
+        "locked",
+        "open"
+      ],
+      "initial": "locked",
+      "hotspot": {
+        "x": 0.456,
+        "y": 0.598,
+        "r": 0.07
+      }
+    },
+    {
+      "id": "fx.airship",
+      "name": "airship",
+      "states": [
+        "grounded",
+        "launched"
+      ],
+      "initial": "grounded",
+      "hotspot": {
+        "x": 0.4,
+        "y": 0.37,
+        "r": 0.4
+      }
+    }
+  ],
+  "opening": {
+    "narration": "You wake beside a grounded airship as storm clouds gather. The engineer steps over and lifts something small and silver in front of you.",
+    "actions": [
+      {
+        "tool": "show_object",
+        "args": {
+          "object_id": "obj.engine_key",
+          "gesture": "hold_up"
+        }
+      }
+    ],
+    "spoken_lines": [
+      {
+        "speaker": "npc.engineer",
+        "text": "鍵。",
+        "language": "ja-JP",
+        "romanization": "Kagi.",
+        "translation": "Key.",
+        "concept_ids": [
+          "object.key"
+        ],
+        "pattern_id": null
+      }
+    ]
+  },
+  "language_learning": {
+    "target_locale": "ja-JP",
+    "support_locale": "en-US",
+    "romanization_system": "hepburn",
+    "starting_level": "absolute_beginner",
+    "input_mode": "voice_first",
+    "narrator_language": "support",
+    "concepts": [
+      {
+        "id": "object.key",
+        "native": "鍵",
+        "romanization": "kagi",
+        "gloss": "key",
+        "referents": [
+          "obj.engine_key"
+        ]
+      },
+      {
+        "id": "object.map",
+        "native": "地図",
+        "romanization": "chizu",
+        "gloss": "map",
+        "referents": [
+          "obj.route_map"
+        ]
+      },
+      {
+        "id": "word.douzo",
+        "native": "どうぞ",
+        "romanization": "douzo",
+        "gloss": "here you go",
+        "referents": []
+      },
+      {
+        "id": "word.hai",
+        "native": "はい",
+        "romanization": "hai",
+        "gloss": "yes / okay",
+        "referents": []
+      },
+      {
+        "id": "word.arigatou",
+        "native": "ありがとう",
+        "romanization": "arigatou",
+        "gloss": "thank you",
+        "referents": []
+      },
+      {
+        "id": "word.mou_ichido",
+        "native": "もう一度",
+        "romanization": "mou ichido",
+        "gloss": "one more time",
+        "referents": []
+      }
+    ],
+    "patterns": [
+      {
+        "id": "request.give_object",
+        "function": "request an object",
+        "native_template": "{object}をください",
+        "romanization_template": "{object} o kudasai",
+        "gloss_template": "Please give me the {object}.",
+        "slots": {
+          "object": [
+            "object.key",
+            "object.map"
+          ]
+        }
+      }
+    ],
+    "learning_beats": [
+      {
+        "id": "ground_key",
+        "objective": "Figure out what the engineer is showing you.",
+        "concept_ids": [
+          "object.key"
+        ],
+        "pattern": null,
+        "slot_values": {},
+        "initial_help_level": 0,
+        "success_evidence": "recognition",
+        "world_result": "none: the engineer keeps the key but reacts warmly, then holds it just out of reach",
+        "complete_when": {},
+        "help": [
+          {
+            "level": 1,
+            "label": "Hear it slowly",
+            "kind": "replay_slow",
+            "line": {
+              "speaker": "npc.engineer",
+              "text": "鍵。",
+              "language": "ja-JP",
+              "romanization": "Kagi.",
+              "translation": "Key.",
+              "concept_ids": [
+                "object.key"
+              ],
+              "pattern_id": null
+            }
+          },
+          {
+            "level": 2,
+            "label": "Show the word",
+            "kind": "word",
+            "concept_ids": [
+              "object.key"
+            ]
+          },
+          {
+            "level": 3,
+            "label": "What to do",
+            "kind": "meaning",
+            "text": "She is naming the thing in her hand. Say the word back to her, or tap it."
+          },
+          {
+            "level": 4,
+            "label": "Hint at the meaning",
+            "kind": "meaning",
+            "text": "kagi ≈ \"key\""
+          },
+          {
+            "level": 5,
+            "label": "Show the full answer",
+            "kind": "full",
+            "native": "鍵",
+            "romanization": "Kagi",
+            "translation": "Key.",
+            "tap_fallback": true
+          }
+        ]
+      },
+      {
+        "id": "request_key",
+        "objective": "Ask the engineer for the key.",
+        "concept_ids": [
+          "object.key"
+        ],
+        "pattern": "request.give_object",
+        "slot_values": {
+          "object": "object.key"
+        },
+        "initial_help_level": 1,
+        "success_evidence": "production",
+        "world_result": "the engineer gives the key to the player and unlocks the engine panel with it (engine panel opens)",
+        "complete_when": {
+          "holders": {
+            "obj.engine_key": "player"
+          },
+          "fixtures": {
+            "fx.engine_panel": "open"
+          }
+        },
+        "help": [
+          {
+            "level": 1,
+            "label": "Hear it slowly",
+            "kind": "replay_slow",
+            "line": {
+              "speaker": "npc.engineer",
+              "text": "鍵をください。",
+              "language": "ja-JP",
+              "romanization": "Kagi o kudasai.",
+              "translation": "Please give me the key.",
+              "concept_ids": [
+                "object.key"
+              ],
+              "pattern_id": "request.give_object"
+            }
+          },
+          {
+            "level": 2,
+            "label": "Show the word",
+            "kind": "word",
+            "concept_ids": [
+              "object.key"
+            ]
+          },
+          {
+            "level": 3,
+            "label": "Show a phrase frame",
+            "kind": "frame",
+            "pattern_id": "request.give_object"
+          },
+          {
+            "level": 4,
+            "label": "Hint at the meaning",
+            "kind": "meaning",
+            "text": "kudasai ≈ \"please give me\""
+          },
+          {
+            "level": 5,
+            "label": "Show the full answer",
+            "kind": "full",
+            "native": "鍵をください",
+            "romanization": "Kagi o kudasai",
+            "translation": "Please give me the key.",
+            "tap_fallback": true
+          }
+        ]
+      },
+      {
+        "id": "transfer_map",
+        "objective": "Ask for the map.",
+        "concept_ids": [
+          "object.map"
+        ],
+        "pattern": "request.give_object",
+        "slot_values": {
+          "object": "object.map"
+        },
+        "initial_help_level": 0,
+        "success_evidence": "transfer",
+        "world_result": "the engineer gives the map to the player and the airship launches",
+        "complete_when": {
+          "holders": {
+            "obj.route_map": "player"
+          },
+          "fixtures": {
+            "fx.airship": "launched"
+          }
+        },
+        "help": [
+          {
+            "level": 1,
+            "label": "Hear it slowly",
+            "kind": "replay_slow",
+            "line": {
+              "speaker": "npc.engineer",
+              "text": "地図。",
+              "language": "ja-JP",
+              "romanization": "Chizu.",
+              "translation": "Map.",
+              "concept_ids": [
+                "object.map"
+              ],
+              "pattern_id": null
+            }
+          },
+          {
+            "level": 2,
+            "label": "Show the word",
+            "kind": "word",
+            "concept_ids": [
+              "object.map"
+            ]
+          },
+          {
+            "level": 3,
+            "label": "Show a phrase frame",
+            "kind": "frame",
+            "pattern_id": "request.give_object"
+          },
+          {
+            "level": 4,
+            "label": "Hint at the meaning",
+            "kind": "meaning",
+            "text": "chizu ≈ \"map\". Ask for it the same way you asked for the key."
+          },
+          {
+            "level": 5,
+            "label": "Show the full answer",
+            "kind": "full",
+            "native": "地図をください",
+            "romanization": "Chizu o kudasai",
+            "translation": "Please give me the map.",
+            "tap_fallback": true
+          }
+        ]
+      }
+    ],
+    "next_episode": "Next: ask where something is."
+  }
+}

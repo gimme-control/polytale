@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+states/
+cache/
+logs/
+.logs/
+web/node_modules/
+web/dist/

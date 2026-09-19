@@ -1,0 +1,15 @@
+# Tool configuration only; install with `pip install -r requirements.txt`.
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["web"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+exclude = ["web/"]
