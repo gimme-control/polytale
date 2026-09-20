@@ -345,6 +345,40 @@ def test_persistence_and_restart() -> None:
         T.check("an unknown act raises", True)
 
 
+def test_heard_meanings() -> None:
+    """The word bank is tappable, so a word in it without a meaning is useless.
+
+    He speaks like a person: most of what he says is not on the scene's 25-word list, and the
+    list's own gloss describes the listed FORM, not the one he inflected.
+    """
+    es = CONTENT.language("es-ES")
+    journey = enter_scene(new_journey(CONTENT, "heard1", language="es-ES"), CONTENT)
+    off_list = {"segments": [{"t": "¿", "r": "", "g": ""},
+                             {"t": "Qué", "r": "", "g": "what"},
+                             {"t": "miras", "r": "", "g": "you look at"},
+                             {"t": "el", "r": "", "g": "the"},
+                             {"t": "móvil", "r": "", "g": "the phone"},
+                             {"t": "?", "r": "", "g": ""}],
+                "item_ids": []}
+    inflected = {"segments": [{"t": "amigo", "r": "", "g": "friend (male)"}], "item_ids": []}
+    listed = lexicon_line(es, ["friend"])  # "amiga", exactly as the lexicon writes it
+    journey, _ = play(journey, CONTENT,
+                      [reply(say(off_list, inflected, listed))], [], opening=True)
+    heard = {w.text: w.gloss for w in views.public_state(journey, CONTENT).heard}
+    T.check("a word off the scene's list still reaches the player with its meaning",
+            heard.get("móvil") == "the phone" and heard.get("el") == "the", heard)
+    T.check("the small words are glossed too, not just the nouns",
+            all(heard.get(w) for w in ("Qué", "miras")), heard)
+    T.check("punctuation is never a word in the bank",
+            "¿" not in heard and "?" not in heard, heard)
+    T.check("an inflected form takes HIS meaning, not the listed form's",
+            heard.get("amigo") == "friend (male)", heard)
+    T.check("the listed form itself still teaches the lexicon's gloss",
+            heard.get(es.items["friend"].text) == es.items["friend"].gloss, heard)
+    T.check("no heard word is ever blank",
+            all(g for g in heard.values()), heard)
+
+
 def test_payload_hygiene() -> None:
     zh = CONTENT.language("zh-CN")
     j, results = found_mei("zh-CN")
@@ -366,9 +400,9 @@ def test_payload_hygiene() -> None:
         rest = payload.model_dump_json(exclude={"dictionary", "heard"})
         T.check(f"{name}: no gloss key, no unspoken lexicon text outside the dictionary",
                 '"gloss"' not in rest and not any(t in rest for t in unspoken), name)
-    T.check("every heard word is one word he really said, and only glossed when known",
+    T.check("every heard word is one word he really said, and every one has a meaning",
             all(w.text and " " not in w.text.strip() for w in state.heard)
-            and any(w.gloss for w in state.heard),
+            and all(w.gloss for w in state.heard),
             [(w.text, w.gloss) for w in state.heard])
     T.check("every dictionary entry is one word of this scene, glossed on its own",
             [w.item_id for w in state.dictionary] and all(
@@ -410,5 +444,6 @@ if __name__ == "__main__":
     T.run("failure keeps state", test_failure_keeps_state)
     T.run("help", test_help)
     T.run("persistence and restart", test_persistence_and_restart)
+    T.run("heard meanings", test_heard_meanings)
     T.run("payload hygiene", test_payload_hygiene)
     T.finish()

@@ -49,6 +49,10 @@ MAX_LINES = 3
 MAX_WORD_SEGMENTS = 10  # hard backstop; the prompt asks for a few words
 MAX_NARRATION_WORDS = 60  # the GM is told 45; the slack keeps a good turn from bouncing
 MAX_HINT_WORDS = 16
+#: A per-word meaning is a dictionary entry. Six words is exactly the longest the authored
+#: lexicon runs to ("come on! let's go! (the chant)"), so every listed gloss is itself a legal
+#: one, and it is far too little to smuggle a sentence's meaning through.
+MAX_GLOSS_WORDS = 6
 
 
 @dataclass
@@ -338,10 +342,22 @@ def _validate_line(
                 f"{where}.segments[{j}] '{text.strip()}' is a word: give its "
                 f"{ctx.language.romanization.system} in r"  # type: ignore[union-attr]
             )
-        segments.append(Segment(t=text.strip(), r=roman if is_word(text) else ""))
+        gloss = _str(seg, "g")
+        if is_word(text) and not gloss:
+            return None, (
+                f"{where}.segments[{j}] '{text.strip()}' is a word: give what that ONE word "
+                "means in g, or the player sees it with no meaning at all"
+            )
+        if len(gloss.split()) > MAX_GLOSS_WORDS:
+            return None, (
+                f"{where}.segments[{j}].g '{gloss}' is too long: at most {MAX_GLOSS_WORDS} "
+                "words, and it is what the WORD means, never what the line means"
+            )
+        segments.append(Segment(t=text.strip(), r=roman if is_word(text) else "",
+                                g=gloss if is_word(text) else ""))
     if romanized:  # a lexicon word's romanization is the lexicon's, however the model wrote it
         lexicon = {item.text: item.roman for item in ctx.language.items.values()}
-        segments = [Segment(t=s.t, r=lexicon.get(s.t, s.r)) for s in segments]
+        segments = [Segment(t=s.t, r=lexicon.get(s.t, s.r), g=s.g) for s in segments]
     words = sum(1 for s in segments if is_word(s.t))
     if words == 0:
         return None, f"{where} has no words"
@@ -472,8 +488,16 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                         "t": {"type": "string",
                               "description": f"The word in {language.name}, native script."},
                         "r": {"type": "string", "description": r_description},
+                        "g": {"type": "string", "description": (
+                            "What THIS ONE WORD means in English, at most "
+                            f"{MAX_GLOSS_WORDS} words, as a dictionary would put it "
+                            "('the phone', 'you look', 'at'). Every word needs one, "
+                            "including the small ones, because the player has no other way "
+                            "to know it. Never what the line means, never a translation of "
+                            'the sentence. "" for punctuation.'
+                        )},
                     },
-                    "required": ["t", "r"],
+                    "required": ["t", "r", "g"],
                 },
             },
             "item_ids": {

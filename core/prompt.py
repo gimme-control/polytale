@@ -50,7 +50,8 @@ def _example_block(scene: Scene, language: Language) -> str:
     item_ids = [i for i in scene.targets if i in language.items][:2] or list(language.items)[:2]
     lines = [
         {
-            "segments": [{"t": language.items[i].text, "r": language.items[i].roman}],
+            "segments": [{"t": language.items[i].text, "r": language.items[i].roman,
+                          "g": language.items[i].gloss}],
             "item_ids": [i],
         }
         for i in item_ids
@@ -221,8 +222,10 @@ The snapshot lists this act's words and how this player is doing with each. Lean
 are the words {name} would use here anyway. Present each as its guidance says. item_ids on a \
 line = every listed item whose word you actually say in it; each is exactly ONE segment \
 spelled as listed (the server refuses the line otherwise). Segments: one per dictionary word, \
-punctuation on its own. record_item notes what the player's attempt showed; it is never a \
-reason to delay, repeat or redirect anything.
+punctuation on its own, and every word carries g, what THAT WORD means on its own. The player \
+has no other way to know a word you invented, so g is not optional and the small words need it \
+most. It is a dictionary entry, never the sentence's meaning. record_item notes what the \
+player's attempt showed; it is never a reason to delay, repeat or redirect anything.
 
 YOUR TURN
 Reply with tool calls ONLY, all in ONE response: first any adjust_trust / set_flag / \

@@ -7,6 +7,9 @@ export interface Segment {
   t: string;
   /** its romanization; "" for punctuation and for languages without romanization */
   r: string;
+  /** what THAT ONE WORD means, committed with the line; "" for punctuation. Never a line's
+   *  meaning — the words he invents have no other source of meaning at all. */
+  g: string;
 }
 
 export interface Line {

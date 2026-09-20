@@ -245,24 +245,30 @@ def test_say() -> None:
             and set(ctx.terminal) == {"lines", "narration", "intent_hint", "expression"},
             sorted(ctx.terminal))
 
-    punct = {"segments": [{"t": ZH.items["cheers"].text, "r": ZH.items["cheers"].roman},
-                          {"t": "！", "r": "ignored"}],
+    punct = {"segments": [{"t": ZH.items["cheers"].text, "r": ZH.items["cheers"].roman,
+                           "g": "cheers"},
+                          {"t": "！", "r": "ignored", "g": "ignored"}],
              "item_ids": ["cheers"]}
     j, ctx = setup()
     execute("say", j, say_args(punct), ctx)
     assert ctx.terminal is not None
-    T.check("punctuation segments carry no romanization",
-            ctx.terminal["lines"][0]["segments"][1].r == "")
+    T.check("punctuation segments carry no romanization and no meaning",
+            ctx.terminal["lines"][0]["segments"][1].r == ""
+            and ctx.terminal["lines"][0]["segments"][1].g == "")
     j, ctx = setup()
-    execute("say", j, say_args({"segments": [{"t": ZH.items["cheers"].text, "r": "GAN-BEI"},
-                                             {"t": ZH.items["team"].text, "r": "x"}],
+    execute("say", j, say_args({"segments": [{"t": ZH.items["cheers"].text, "r": "GAN-BEI",
+                                              "g": "cheers"},
+                                             {"t": ZH.items["team"].text, "r": "x",
+                                              "g": "the team"}],
                                 "item_ids": []}), ctx)
     assert ctx.terminal is not None
     said = ctx.terminal["lines"][0]
     T.check("lexicon words (support words too) take the lexicon's romanization and are tagged",
             [s.r for s in said["segments"]] == [ZH.items["cheers"].roman, ZH.items["team"].roman]
             and said["item_ids"] == ["cheers", "team"])
-    word = {"t": ZH.items["thanks"].text, "r": ZH.items["thanks"].roman}
+    T.check("a word he made up keeps the meaning he gave it",
+            [s.g for s in said["segments"]] == ["cheers", "the team"])
+    word = {"t": ZH.items["thanks"].text, "r": ZH.items["thanks"].roman, "g": "thanks"}
     j, ctx = setup()
     execute("say", j, say_args({"segments": [word], "item_ids": ["cheers", "thanks"]}), ctx)
     T.check("a tag without its word is dropped by the ledger, not bounced back at the GM",
@@ -280,13 +286,22 @@ def test_say() -> None:
         ("lines not a list", {**say_args(), "lines": "hello"}),
         ("empty segments", say_args({**good, "segments": []})),
         ("word segment without romanization",
-         say_args({"segments": [{"t": "慢", "r": ""}], "item_ids": []})),
+         say_args({"segments": [{"t": "慢", "r": "", "g": "slow"}], "item_ids": []})),
+        ("word segment with no meaning at all",
+         say_args({"segments": [{"t": "慢", "r": "màn", "g": " "}], "item_ids": []})),
+        ("a gloss long enough to be the line's meaning",
+         say_args({"segments": [{"t": "慢", "r": "màn",
+                                 "g": "what are you looking at on the phone"}],
+                   "item_ids": []})),
         ("word glued to punctuation",
-         say_args({**good, "segments": [{"t": ZH.items["cheers"].text + "！", "r": "x"}]})),
+         say_args({**good, "segments": [{"t": ZH.items["cheers"].text + "！", "r": "x",
+                                         "g": "cheers"}]})),
         ("romanization written into t",
-         say_args({**good, "segments": [{"t": ZH.items["cheers"].text + "le", "r": "x"}]})),
-        ("a foreign word echoed in t", say_args({**good, "segments": [{"t": "AI", "r": "ei ai"}]})),
-        ("punctuation-only line", say_args({**good, "segments": [{"t": "？", "r": ""}]})),
+         say_args({**good, "segments": [{"t": ZH.items["cheers"].text + "le", "r": "x",
+                                         "g": "cheers"}]})),
+        ("a foreign word echoed in t",
+         say_args({**good, "segments": [{"t": "AI", "r": "ei ai", "g": "a machine"}]})),
+        ("punctuation-only line", say_args({**good, "segments": [{"t": "？", "r": "", "g": ""}]})),
         ("too many word segments",
          say_args({**good, "segments": good["segments"] + [word] * MAX_WORD_SEGMENTS})),
         ("unknown item id", say_args({**good, "item_ids": ["whisky"]})),
@@ -345,10 +360,12 @@ def test_declarations() -> None:
     plain = ZH.model_copy(update={"romanization": None})
     j, _ = setup()
     ctx = ToolContext(scene=BAR, language=plain)
-    execute("say", j, say_args({"segments": [{"t": ZH.items["cheers"].text, "r": "junk"}],
+    execute("say", j, say_args({"segments": [{"t": ZH.items["cheers"].text, "r": "junk",
+                                              "g": "cheers"}],
                                 "item_ids": ["cheers"]}), ctx)
-    T.check("a language with no romanization never stores r",
-            ctx.terminal is not None and ctx.terminal["lines"][0]["segments"][0].r == "")
+    T.check("a language with no romanization never stores r, but still carries the meaning",
+            ctx.terminal is not None and ctx.terminal["lines"][0]["segments"][0].r == ""
+            and ctx.terminal["lines"][0]["segments"][0].g == "cheers")
 
 
 if __name__ == "__main__":

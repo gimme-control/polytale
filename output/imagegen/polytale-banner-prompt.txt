@@ -1,0 +1,10 @@
+Use case: ads-marketing
+Asset type: wide cinematic game banner, approximately 3:1 landscape.
+Create polished key art for the language-learning adventure game Polytale, based closely on its actual game artwork.
+Input image 1 is the reference for the character identity, bar setting, and painterly rendering. Input image 2 is the reference for the rainy match-night street, football crowd, and lighting. These are references, not edit targets.
+Scene: an inviting amber-lit wooden football pub opening onto the cool blue rainy match-night street from image 2, with small supporter silhouettes and triangular bunting. Make one coherent scene, not a collage.
+Subject: preserve the recognizable middle-aged East Asian supporter from image 1, burgundy football shirt and red-and-cream scarf, shown waist-up at the bar in the right half, looking warmly toward the viewer with a natural open-handed conversational gesture. A scarf rests on the polished counter. Human connection and being welcomed into a foreign-language football crowd is the story.
+Style: match the sophisticated painterly game art of both references, textured brushwork, cinematic depth, warm amber light against muted midnight teal, natural face and hands. Not photorealism, not cartoon mascot art.
+Composition: broad atmospheric negative space in the left half for the title, character and bar on the right, distant street crowd tying the scene together. Strong readability at thumbnail size, generous safe margins.
+Text verbatim: "Polytale". Large elegant warm ivory serif game-title lettering in the left half. Only this word, precisely spelled, clean and highly legible.
+Avoid: subtitles, taglines, speech bubbles, gameplay interface, extra logos, watermarks, recognizable real football clubs, country flags, split panels, montage borders, exaggerated expressions.

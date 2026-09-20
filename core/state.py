@@ -62,8 +62,15 @@ class VocabRecord(BaseModel):
 
 
 class Segment(BaseModel):
+    #: the word in the target language, native script
     t: str
+    #: its romanization, "" for punctuation and for languages that need none
     r: str = ""
+    #: what THIS ONE WORD means, from the character who just used it. The lexicon only knows
+    #: the scene's authored words, and he speaks like a person, so every other word he says
+    #: would otherwise reach the player with no meaning at all. Never a line's meaning: the
+    #: tool layer refuses a gloss long enough to be one.
+    g: str = ""
 
 
 class Line(BaseModel):

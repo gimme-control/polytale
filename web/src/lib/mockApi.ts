@@ -339,13 +339,13 @@ export function createMockApi(): Api {
   const cjk = () => /^(zh|ja)/.test(lang.locale);
   const gitem = (id: string): Segment[] => {
     const it = lang.items[id];
-    return it ? [{ t: it.text, r: noRoman() ? "" : it.roman }] : [];
+    return it ? [{ t: it.text, r: noRoman() ? "" : it.roman, g: it.gloss }] : [];
   };
-  const bare = (segs: Segment[]): Segment[] => segs.map(({ t, r }) => ({ t, r }));
+  const bare = (segs: Segment[]): Segment[] => segs.map(({ t, r, g }) => ({ t, r, g }));
   const item = (id: string) => bare(gitem(id));
   const punct = (p: "." | "?" | "!" | ","): Segment[] => {
     const wide = { ".": "。", "?": "？", "!": "！", ",": "，" } as const;
-    return [{ t: cjk() ? wide[p] : p, r: "" }];
+    return [{ t: cjk() ? wide[p] : p, r: "", g: "" }];
   };
 
   const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\s'’.,!?。？！，]/g, "");
@@ -558,8 +558,9 @@ export function createMockApi(): Api {
       for (const seg of e.line.segments) {
         if (!/\p{L}/u.test(seg.t) || seen.has(seg.t)) continue;
         seen.add(seg.t);
+        // His own meaning for the word, and the lexicon's only where he said the listed form.
         const entry = Object.values(lang.items).find((i) => i.text === seg.t);
-        out.push({ text: seg.t, roman: roman ? seg.r || entry?.roman || "" : "", gloss: entry?.gloss ?? "" });
+        out.push({ text: seg.t, roman: roman ? seg.r || entry?.roman || "" : "", gloss: entry?.gloss ?? seg.g });
       }
     }
     return out;

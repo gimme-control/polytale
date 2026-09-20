@@ -98,7 +98,8 @@ class HeardWord(BaseModel):
 
     Not the same thing as the scene's vocabulary: he speaks like a person, so he says words
     that are not on any list. Those still belong here — "words you have heard" has to mean
-    exactly that — with an empty gloss when the lexicon does not know them.
+    exactly that — and they carry the meaning he committed with the line (``Segment.g``),
+    because a word bank the player is told to tap is useless where the meanings are blank.
     """
 
     text: str
@@ -110,8 +111,12 @@ def heard_words(journey: Journey, content: Content) -> list[HeardWord]:
     """Every word he has spoken this scene, in order, first time only.
 
     A listed phrase he said whole ("esta noche") is ONE entry with that phrase's meaning, not
-    two words wearing the wrong glosses. A word the lexicon does not know still appears, with
-    no meaning: he speaks freely, and the player heard it either way.
+    two words wearing the wrong glosses. Everything else means what he said it meant.
+
+    The lexicon wins only where he used the listed form itself, because that gloss is the
+    scene's teaching text. Where he inflected it, the lexicon's gloss describes the form he
+    did NOT say, and taking it would tell the player "amigo" means "friend (female)", so his
+    own word wins there.
     """
     run = journey.scene
     if run is None:
@@ -137,10 +142,17 @@ def heard_words(journey: Journey, content: Content) -> list[HeardWord]:
                 continue
             seen.add(text)
             item = language.items.get(item_id) if item_id else None
+            own = " ".join(g.g for g in group if g.g).strip()
+            if item is None:
+                gloss = own
+            elif vocab.fold(text) in {vocab.fold(p) for p in item.parts}:
+                gloss = item.gloss  # the listed form, said as listed
+            else:
+                gloss = own or item.gloss  # an inflection: his word, not the lexicon's entry
             out.append(HeardWord(text=text,
                                  roman=" ".join(g.r for g in group if g.r)
                                  or (item.roman if item else ""),
-                                 gloss=item.gloss if item else ""))
+                                 gloss=gloss))
     return out
 
 

@@ -96,7 +96,9 @@ def lexicon_line(language: Any, item_ids: list[str]) -> dict:
         words = item.text.split() if language.word_spacing else [item.text]
         romans = (item.roman.split() if language.word_spacing else [item.roman]) or [""]
         for k, word in enumerate(words):
-            segments.append({"t": word, "r": romans[k] if k < len(romans) else romans[-1]})
+            # Every word carries its own meaning; a listed phrase glosses on its first word.
+            segments.append({"t": word, "r": romans[k] if k < len(romans) else romans[-1],
+                             "g": item.gloss if k == 0 else "part of the phrase"})
     return {"segments": segments, "item_ids": list(item_ids)}
 
 
