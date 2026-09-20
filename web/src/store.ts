@@ -9,13 +9,13 @@ import type {
   Clue,
   Ending,
   Entry,
+  Frame,
   GameView,
   Help,
   JourneyScene,
   Language,
   LearnerEntry,
   Line,
-  Phrase,
   Progress,
   PublicState,
   SceneCard,
@@ -24,6 +24,8 @@ import type {
   Summary,
   Transcription,
   TurnResult,
+  HeardWord,
+  WordEntry,
 } from "./lib/types";
 import { mic } from "./audio/recorder";
 import { linePlayer, type QueueItem } from "./audio/linePlayer";
@@ -32,7 +34,6 @@ export const MIN_RECORDING_MS = 250;
 export const AUTO_SUBMIT_MS = 1200;
 export const SLOW_RATE = 0.75;
 const SUMMARY_DELAY_MS = 1400;
-const INTRO_MIN_MS = 2400;
 const CLUE_TOAST_MS = 5200;
 
 /** The narrator is read first; the character speaks once there has been time to read. */
@@ -48,6 +49,8 @@ interface IntroCard {
   scene: SceneCard | null;
   error: string | null;
   body: { scene_id?: string; restart?: boolean };
+  /** the opening turn, finished and held until the player clicks Enter */
+  ready: { st: PublicState; r: TurnResult | null } | null;
 }
 
 interface GameState {
@@ -68,22 +71,25 @@ interface GameState {
   sceneComplete: boolean;
   summary: Summary | null;
   intro: IntroCard | null;
+  /** the player pressed Enter; step in as soon as the opening lands */
+  entering: boolean;
   story: Story | null;
   game: GameView | null;
   ending: Ending | null;
+  /** what the scene looks like now; null means the base plate, untouched */
+  frame: Frame | null;
 
   /** notebook: how many clues the learner has already looked at, and the newest arrival */
   cluesSeen: number;
   clueToast: Clue | null;
 
   /** "How do I say...?" */
-  phrasebook: Phrase[];
-  phraseOpen: boolean;
-  phraseBusy: boolean;
-  phraseError: string | null;
-  phraseResult: Phrase | null;
-  /** text handed to the input bar by "Use it" */
-  draft: { text: string; nonce: number };
+  /** the scene's vocabulary, word meanings only, heard-first */
+  dictionary: WordEntry[];
+  /** the words he has actually said, as he said them */
+  heard: HeardWord[];
+  /** text handed to the input bar by "Use it" or by tapping a word you have heard */
+  draft: { text: string; nonce: number; append?: boolean };
 
   /** npc lines of the current exchange not yet shown (they appear as they play) */
   hidden: Record<string, true>;
@@ -111,6 +117,8 @@ interface GameState {
   begin(): Promise<void>;
   enterScene(body: { scene_id?: string; restart?: boolean }, card: SceneCard | null): Promise<void>;
   retryIntro(): Promise<void>;
+  /** leave the entry card and start playing */
+  enterGame(): void;
   pressMic(): Promise<void>;
   releaseMic(): Promise<void>;
   confirmPreview(): Promise<void>;
@@ -118,11 +126,8 @@ interface GameState {
   retryFailed(): Promise<void>;
   sendText(text: string): Promise<boolean>;
   openNotebook(): void;
-  setPhraseOpen(open: boolean): void;
-  askPhrase(text: string): Promise<void>;
-  showPhrase(p: Phrase): void;
-  playPhrase(p: Phrase): void;
-  usePhrase(p: Phrase): void;
+  /** tap a word he has said: it joins what you are already composing */
+  sayWord(text: string): void;
   requestHelp(): Promise<void>;
   replay(line: Line, rate?: number): void;
   finishScene(): Promise<void>;
@@ -183,7 +188,9 @@ export const useGame = create<GameState>((set, get) => {
       story: st.story ?? get().story,
       game: st.game ?? null,
       ending: st.ending ?? null,
-      phrasebook: st.phrasebook ?? [],
+      frame: st.frame ?? null,
+      dictionary: st.dictionary ?? [],
+      heard: st.heard ?? [],
       cluesSeen: st.game?.clues.length ?? 0,
       clueToast: null,
       hidden: {},
@@ -267,7 +274,11 @@ export const useGame = create<GameState>((set, get) => {
       transcript: [...s.transcript, ...entries],
       game: r.game ?? s.game,
       ending: r.ending ?? s.ending,
+      // The picture is still being painted; Scene swaps it in once it has decoded.
+      frame: r.frame ?? null,
       progress: r.progress,
+      dictionary: r.dictionary ?? s.dictionary,
+      heard: r.heard ?? s.heard,
       sceneComplete: r.scene_complete,
       summary: r.summary ?? s.summary,
       help: null,
@@ -310,10 +321,26 @@ export const useGame = create<GameState>((set, get) => {
     }
   }
 
+  /** Commit the held opening: hydrate, show the scene, and let the character speak. */
+  function stepIn() {
+    const held = get().intro?.ready;
+    if (!held) return;
+    const { st, r } = held;
+    hydrate(st);
+    set({
+      screen: (st.scene_complete && st.summary) || st.ending ? "summary" : "play",
+      intro: null,
+      entering: false,
+    });
+    if (r) {
+      set({ learnerShownAt: 0 });
+      speak(r.lines ?? [], r.scene_complete, readingMs(r.narration));
+    }
+  }
+
   async function runIntro() {
     const { journeyId, token, intro } = get();
     if (!journeyId || !token || !intro) return;
-    const t0 = performance.now();
     set({ intro: { ...intro, error: null } });
     try {
       let r: TurnResult | null = null;
@@ -324,16 +351,12 @@ export const useGame = create<GameState>((set, get) => {
         if ((e as ApiError).status !== 409) throw e;
       }
       const st = await api.getState(journeyId, token);
-      const knewIntro = !!get().intro?.scene?.intro;
       if (st.scene) set({ intro: { ...get().intro!, scene: { ...st.scene, intro: st.scene.intro } } });
-      const wait = Math.max(INTRO_MIN_MS - (performance.now() - t0), knewIntro ? 0 : 1800);
-      if (wait > 0) await new Promise((res) => window.setTimeout(res, wait));
-      hydrate(st);
-      set({ screen: (st.scene_complete && st.summary) || st.ending ? "summary" : "play", intro: null });
-      if (r) {
-        set({ learnerShownAt: 0 });
-        speak(r.lines ?? [], r.scene_complete, readingMs(r.narration));
-      }
+      // The opening is ready, but the player decides when the night starts: it waits on
+      // the entry card so there is time to read where you are. The model call has been
+      // running the whole time they were reading, so the pause costs nothing.
+      set({ intro: { ...get().intro!, ready: { st, r } } });
+      if (get().entering) stepIn();
     } catch (e) {
       const err = e as ApiError;
       // 402: the provider account is unfunded; say so, because retrying cannot help.
@@ -357,16 +380,15 @@ export const useGame = create<GameState>((set, get) => {
     sceneComplete: false,
     summary: null,
     intro: null,
+    entering: false,
     story: null,
     game: null,
     ending: null,
+    frame: null,
     cluesSeen: 0,
     clueToast: null,
-    phrasebook: [],
-    phraseOpen: false,
-    phraseBusy: false,
-    phraseError: null,
-    phraseResult: null,
+    dictionary: [],
+    heard: [],
     draft: { text: "", nonce: 0 },
     hidden: {},
     speakingLineId: null,
@@ -423,46 +445,14 @@ export const useGame = create<GameState>((set, get) => {
       set({ cluesSeen: get().game?.clues.length ?? 0, clueToast: null });
     },
 
-    setPhraseOpen(open) {
-      set({ phraseOpen: open, phraseError: null });
-    },
 
-    async askPhrase(text) {
-      const t = text.trim();
-      const { journeyId, token, phraseBusy } = get();
-      if (!t || !journeyId || !token || phraseBusy) return;
-      set({ phraseBusy: true, phraseError: null });
-      try {
-        const p = await api.phrase(journeyId, token, t);
-        set((s) => ({ phraseResult: p, phrasebook: [p, ...s.phrasebook.filter((x) => x.phrase_id !== p.phrase_id)] }));
-      } catch (e) {
-        const err = e as ApiError;
-        set({
-          phraseError:
-            err.status === 422
-              ? "I can only help with what YOU want to say. Type it in English."
-              : err.status === 402
-                ? err.detail
-                : "That didn't come back. Try again.",
-        });
-      } finally {
-        set({ phraseBusy: false });
-      }
-    },
 
-    showPhrase(p) {
-      set({ phraseResult: p, phraseError: null });
-    },
 
-    playPhrase(p) {
-      const { journeyId, token } = get();
-      if (!journeyId || !token) return;
-      void api.phraseAudio(journeyId, token, p.phrase_id, p.audio_url).then((src) => linePlayer.playClip(src)).catch(() => {});
-    },
 
-    usePhrase(p) {
-      // The sheet covers the input it just filled, so it gets out of the way.
-      set((s) => ({ draft: { text: p.text, nonce: s.draft.nonce + 1 }, phraseOpen: false }));
+
+    sayWord(text) {
+      // Appends, so tapping two words in a row builds a phrase instead of replacing one.
+      set((s) => ({ draft: { text, nonce: s.draft.nonce + 1, append: true } }));
     },
 
     async begin() {
@@ -512,11 +502,16 @@ export const useGame = create<GameState>((set, get) => {
       linePlayer.stop();
       clearAuto();
       if (summaryTimer != null) window.clearTimeout(summaryTimer);
-      set({ screen: "intro", intro: { scene: card, error: null, body } });
+      set({ screen: "intro", entering: false, intro: { scene: card, error: null, body, ready: null } });
       await runIntro();
     },
 
     retryIntro: runIntro,
+
+    enterGame() {
+      if (get().intro?.ready) stepIn();
+      else set({ entering: true }); // still opening: step in the moment it lands
+    },
 
     async pressMic() {
       const s = get();
@@ -669,7 +664,7 @@ export const useGame = create<GameState>((set, get) => {
       } catch {
         /* start screen renders without the cover */
       }
-      set({ screen: "start", summary: null, ending: null, scene: null, phraseResult: null, phraseOpen: false });
+      set({ screen: "start", summary: null, ending: null, frame: null, scene: null });
     },
 
     dismissNotice() {

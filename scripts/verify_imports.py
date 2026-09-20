@@ -14,8 +14,8 @@ from scripts.testkit import ROOT, Checker
 T = Checker("verify_imports")
 PARENT = ROOT.parent
 CORE_FORBIDDEN = {"fastapi", "starlette", "uvicorn", "server", "media"}
-CORE_MODULES = {"content", "dm", "game", "gemini", "phrasebook", "prompt", "state", "summary",
-                "tools", "views", "vocab"}
+CORE_MODULES = {"content", "dm", "frames", "game", "gemini", "prompt", "romanize",
+                "state", "summary", "tools", "views", "vocab"}
 SKIP_DIRS = {"web", "node_modules", ".git", "states", "cache", "logs", "__pycache__", ".venv"}
 
 

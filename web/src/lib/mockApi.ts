@@ -2,7 +2,7 @@
 //
 // A scripted playthrough of the one-scene demo: you are looking for Mei among football
 // fans on final night. Show them her photo, win them over, and they tell you where she
-// is. Trust, clues, flags, goals, the phrasebook and the learning ledger underneath are
+// is. Trust, clues, flags, goals and the learning ledger underneath are
 // all real; the character and the narrator are scripted stand-ins for the model.
 // State persists, so a refresh restores. Real `content/` JSON and art are used for what
 // they define when the Vite dev server can serve them (`/mock-content/...`).
@@ -10,8 +10,7 @@
 // This is the ONLY file in web/src allowed to contain target-language text. It is a
 // test double, not product logic.
 //
-// Test hooks: `window.__polytaleMock` = { queue, actMs, transcribeMs, sceneMs, phraseMs,
-// failNextAct, failNextPhrase }.
+// Test hooks: `window.__polytaleMock` = { queue, actMs, transcribeMs, sceneMs, failNextAct }.
 // Query flags: `lang=<locale>`, `noroman=1`, `spaced=1`.
 
 import type { Api } from "./api";
@@ -20,6 +19,7 @@ import type {
   Clue,
   Ending,
   Entry,
+  Frame,
   GameView,
   Help,
   ItemState,
@@ -28,8 +28,6 @@ import type {
   LanguageOption,
   Line,
   Outcome,
-  Phrase,
-  PhraseSegment,
   Progress,
   PublicState,
   SceneView,
@@ -38,6 +36,8 @@ import type {
   Summary,
   Transcription,
   TurnResult,
+  HeardWord,
+  WordEntry,
 } from "./types";
 import { encodeWav } from "./wav";
 
@@ -81,8 +81,9 @@ interface SceneFile {
   tagline: string;
   intro: string;
   art: { background: string; cover: string };
-  npc: { id: string; name: string; names?: Record<string, string>; role: string; anchor?: { x: number; y: number }; trust?: number };
+  npc: { id: string; name: string; names?: Record<string, string>; names_roman?: Record<string, string>; role: string; anchor?: { x: number; y: number }; trust?: number };
   targets?: string[];
+  support_words?: string[];
   goals: GoalDef[];
   clues?: ClueDef[];
   flags?: { id: string }[];
@@ -197,13 +198,14 @@ interface SceneRun {
   goals_done: string[];
   transcript: Entry[];
   help_uses: number;
-  exchange: { posed_item_ids: string[]; phrasebook_item_ids: string[]; help_level: 0 | 1 | 2; line_ids: string[]; intent_hint: string };
+  exchange: { posed_item_ids: string[]; help_level: 0 | 1 | 2; line_ids: string[]; intent_hint: string };
+  expression: string;
+  patches: { region: string; change: string }[];
 }
 interface Game {
   trust: Record<string, number>;
   clues: string[];
   flags: string[];
-  phrasebook: Phrase[];
   ending_id: string | null;
 }
 interface Journey {
@@ -225,9 +227,7 @@ interface Hook {
   actMs: number;
   transcribeMs: number;
   sceneMs: number;
-  phraseMs: number;
   failNextAct: boolean | number;
-  failNextPhrase: boolean;
 }
 
 const KEY = "polytale.mock.journey.v4";
@@ -256,7 +256,7 @@ export function createMockApi(): Api {
   let titleArt: string | null = null;
   let synced: Promise<void> | null = null;
 
-  const hook: Hook = { queue: [], actMs: 1300, transcribeMs: 700, sceneMs: 2200, phraseMs: 900, failNextAct: false, failNextPhrase: false };
+  const hook: Hook = { queue: [], actMs: 1300, transcribeMs: 700, sceneMs: 2200, failNextAct: false };
   (window as unknown as { __polytaleMock: Hook }).__polytaleMock = hook;
 
   async function fetchJson<T>(path: string): Promise<T | null> {
@@ -337,15 +337,15 @@ export function createMockApi(): Api {
 
   const noRoman = () => flag("noroman") === "1" || !lang.romanization;
   const cjk = () => /^(zh|ja)/.test(lang.locale);
-  const gitem = (id: string): PhraseSegment[] => {
+  const gitem = (id: string): Segment[] => {
     const it = lang.items[id];
-    return it ? [{ t: it.text, r: noRoman() ? "" : it.roman, g: it.gloss.replace(/\s*[…(/].*$/, "") }] : [];
+    return it ? [{ t: it.text, r: noRoman() ? "" : it.roman }] : [];
   };
-  const bare = (segs: PhraseSegment[]): Segment[] => segs.map(({ t, r }) => ({ t, r }));
+  const bare = (segs: Segment[]): Segment[] => segs.map(({ t, r }) => ({ t, r }));
   const item = (id: string) => bare(gitem(id));
-  const punct = (p: "." | "?" | "!" | ","): PhraseSegment[] => {
+  const punct = (p: "." | "?" | "!" | ","): Segment[] => {
     const wide = { ".": "。", "?": "？", "!": "！", ",": "，" } as const;
-    return [{ t: cjk() ? wide[p] : p, r: "", g: "" }];
+    return [{ t: cjk() ? wide[p] : p, r: "" }];
   };
 
   const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\s'’.,!?。？！，]/g, "");
@@ -396,7 +396,7 @@ export function createMockApi(): Api {
   }
   const fresh = (jid: string, token: string, locale: string): Journey => ({
     journey_id: jid, token, locale, vocab: {}, scene: null, done: [], summary: null, attempts: {}, lines: {}, seq: 0,
-    game: { trust: {}, clues: [], flags: [], phrasebook: [], ending_id: null },
+    game: { trust: {}, clues: [], flags: [], ending_id: null },
   });
 
   const rec = (j: Journey, id: string): VocabRecord =>
@@ -427,6 +427,47 @@ export function createMockApi(): Api {
       trust: sc ? (j.game.trust[sc.id] ?? sc.npc.trust ?? 0) : 0,
       clues: j.game.clues.map((id) => allClues().find((c) => c.id === id)).filter((c): c is ClueDef => !!c).map(({ id, title, text }) => ({ id, title, text })),
     };
+  }
+
+  // -- the living scene ------------------------------------------------------
+  // Stand-in cutouts: flat SVG data URIs, so the crossfade, the layer geometry and the
+  // "text never waits for the picture" path are all exercised without a model call.
+  // The real server paints these rectangles with the image-edit model.
+
+  const FACES = ["neutral", "delighted", "laughing", "puzzled", "moved", "roaring", "conspiratorial"];
+  const REGION_BOX: Record<string, [number, number, number, number]> = {
+    counter: [0.06, 0.64, 0.88, 0.36],
+    hands: [0.22, 0.392, 0.56, 0.39],
+    room_left: [0, 0, 0.345, 0.72],
+    room_right: [0.655, 0, 0.345, 0.72],
+  };
+
+  function faceBox(sc: SceneFile): [number, number, number, number] {
+    const a = sc.npc.anchor ?? { x: 0.5, y: 0.3 };
+    return [a.x - 0.135, a.y - 0.165, 0.27, 0.34];
+  }
+
+  function cutout(label: string, tint: string): string {
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" preserveAspectRatio="none">` +
+      `<rect width="200" height="200" rx="10" fill="${tint}"/>` +
+      `<text x="100" y="188" font-family="sans-serif" font-size="13" fill="#f1eee8" opacity="0.8" text-anchor="middle">${label}</text>` +
+      `</svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+
+  function frameOf(j: Journey, run: SceneRun): Frame | null {
+    const sc = scenes[run.scene_id];
+    const layers = run.patches.map((p, i) => {
+      const [left, top, width, height] = REGION_BOX[p.region] ?? REGION_BOX.counter;
+      return { id: `beat${i}`, url: cutout(p.change, "rgb(159 195 177 / 0.22)"), left, top, width, height };
+    });
+    if (run.expression !== "neutral") {
+      const [left, top, width, height] = faceBox(sc);
+      layers.push({ id: `face-${run.expression}`, url: cutout(run.expression, "rgb(241 238 232 / 0.16)"), left, top, width, height });
+    }
+    if (!layers.length) return null;
+    return { key: `${j.journey_id}-${run.turn}-${run.expression}-${run.patches.length}`, expression: run.expression, layers };
   }
 
   function sceneView(sc: SceneFile): SceneView {
@@ -477,6 +518,53 @@ export function createMockApi(): Api {
     };
   }
 
+  /** Every word of the scene, the ones he has said first, each with that one word's meaning. */
+  function silence(key: string, text: string): string {
+    const cached = audio.get(key);
+    if (cached) return cached;
+    const secs = Math.min(3.4, 0.7 + text.length * 0.17);
+    const url = URL.createObjectURL(encodeWav(new Float32Array(Math.round(16000 * secs)), 16000));
+    audio.set(key, url);
+    return url;
+  }
+
+  function dictionaryOf(j: Journey): WordEntry[] {
+    const run = j.scene;
+    if (!run) return [];
+    const sc = scenes[run.scene_id];
+    const ids = [...(sc.targets ?? []), ...(sc.support_words ?? [])].filter((v, i, a) => a.indexOf(v) === i);
+    const spoken: string[] = [];
+    for (const e of run.transcript) {
+      if (e.kind === "npc") for (const id of e.line.item_ids) if (!spoken.includes(id)) spoken.push(id);
+    }
+    const order = [...spoken.filter((i) => ids.includes(i)), ...ids.filter((i) => !spoken.includes(i))];
+    const roman = !noRoman();
+    return order.flatMap((id) => {
+      const it = lang.items[id];
+      if (!it) return [];
+      return [{ item_id: id, text: it.text, roman: roman ? it.roman : "", gloss: it.gloss, heard: spoken.includes(id) }];
+    });
+  }
+
+  /** The words he has actually said, as he said them (free speech, so some are unlisted). */
+  function heardOf(j: Journey): HeardWord[] {
+    const run = j.scene;
+    if (!run) return [];
+    const roman = !noRoman();
+    const out: HeardWord[] = [];
+    const seen = new Set<string>();
+    for (const e of run.transcript) {
+      if (e.kind !== "npc") continue;
+      for (const seg of e.line.segments) {
+        if (!/\p{L}/u.test(seg.t) || seen.has(seg.t)) continue;
+        seen.add(seg.t);
+        const entry = Object.values(lang.items).find((i) => i.text === seg.t);
+        out.push({ text: seg.t, roman: roman ? seg.r || entry?.roman || "" : "", gloss: entry?.gloss ?? "" });
+      }
+    }
+    return out;
+  }
+
   function publicState(j: Journey): PublicState {
     const run = j.scene;
     return {
@@ -493,7 +581,9 @@ export function createMockApi(): Api {
       story: storyView(),
       game: gameView(j),
       ending: endingView(j),
-      phrasebook: j.game.phrasebook,
+      dictionary: dictionaryOf(j),
+      heard: heardOf(j),
+      frame: run ? frameOf(j, run) : null,
     };
   }
 
@@ -522,7 +612,9 @@ export function createMockApi(): Api {
   };
 
   function opening(sc: SceneFile): Reply {
-    const name = sc.npc.names?.[lang.locale] ?? sc.npc.name;
+    // Narration is prose the player reads, so it uses the readable name, exactly as
+    // the real narrator is instructed to. Spoken bylines keep the native script.
+    const name = sc.npc.names_roman?.[lang.locale] ?? sc.npc.name;
     return {
       narration: `The room is three deep at the counter and everyone is shouting at the screen. ${name} spots you, a stranger with no idea what is going on, and grins like you have made his night.`,
       lines: [line(["hello"], "!"), line(["match", "tonight"], "!")],
@@ -534,7 +626,9 @@ export function createMockApi(): Api {
     const g = j.game;
     const said = mentioned(input.text);
     const has = (...ids: string[]) => ids.some((id) => said.includes(id));
-    const name = sc.npc.names?.[lang.locale] ?? sc.npc.name;
+    // Narration is prose the player reads, so it uses the readable name, exactly as
+    // the real narrator is instructed to. Spoken bylines keep the native script.
+    const name = sc.npc.names_roman?.[lang.locale] ?? sc.npc.name;
     const understood = new Set<string>(said);
     const trust = () => g.trust[sc.id] ?? sc.npc.trust ?? 0;
     const bump = (d: number) => (g.trust[sc.id] = Math.max(-2, Math.min(3, trust() + d)));
@@ -620,7 +714,7 @@ export function createMockApi(): Api {
     if (!targetsOf(sc).includes(itemId)) return;
     const r = rec(j, itemId);
     const ex = run.exchange;
-    const helped = ex.help_level === 1 || ex.phrasebook_item_ids.includes(itemId);
+    const helped = ex.help_level === 1;
     const outcome: Outcome = ex.help_level === 2 ? "with_hint" : helped ? "with_help" : "first_try";
     const recall = outcome === "first_try" && !!r.first_scene && r.first_scene !== run.scene_id;
     r.first_scene ??= run.scene_id;
@@ -682,7 +776,6 @@ export function createMockApi(): Api {
 
     run.exchange = {
       posed_item_ids: [...new Set(lines.flatMap((l) => l.item_ids))],
-      phrasebook_item_ids: [],
       help_level: 0,
       line_ids: lines.map((l) => l.line_id),
       intent_hint: reply.hint,
@@ -692,11 +785,19 @@ export function createMockApi(): Api {
     run.transcript.push({ kind: "narration", turn: run.turn, text: reply.narration });
     for (const l of lines) run.transcript.push({ kind: "npc", turn: run.turn, line: l });
 
+    // The scripted stand-in for the model's own choice: a face every turn, a beat now and then.
+    run.expression = FACES[(run.turn + events.length) % FACES.length];
+    if (events.some((e) => e.kind === "clue") && run.patches.length < 8) {
+      run.patches.push({ region: run.patches.length % 2 ? "room_right" : "counter", change: "something changes" });
+    }
+
     if (run.goals_done.length === sc.goals.length && sc.goals.length > 0 && !run.complete) finishRun(j, run);
     save(j);
     return {
       turn: run.turn, lines, narration: reply.narration, events, progress: progress(j),
+      dictionary: dictionaryOf(j),
       scene_complete: run.complete, summary: run.complete ? j.summary : null, game: gameView(j), ending: endingView(j),
+      frame: frameOf(j, run),
       latency_ms: Math.round(performance.now() - t0),
     };
   }
@@ -735,11 +836,10 @@ export function createMockApi(): Api {
     const spoken = items.filter((i) => i.produced);
     const lines: string[] = [];
     if (spoken.length) lines.push(`You said ${spoken.length} of these yourself, by voice or keyboard.`);
-    if (j.game.phrasebook.length) lines.push(`You looked up ${j.game.phrasebook.length} ${j.game.phrasebook.length === 1 ? "phrase" : "phrases"} of your own.`);
     lines.push(run.help_uses ? `You asked for help ${run.help_uses} ${run.help_uses === 1 ? "time" : "times"}.` : "You never asked for help.");
     const nextId = j.game.ending_id ? undefined : order[order.indexOf(run.scene_id) + 1];
     const next = nextId ? scenes[nextId] : null;
-    return { scene_id: sc.id, scene_name: sc.name, items, counts, recalled: items.filter((i) => i.recall).map((i) => i.item_id), lines, next_scene: next ? { id: next.id, name: next.name, tagline: next.tagline } : null, phrasebook: j.game.phrasebook };
+    return { scene_id: sc.id, scene_name: sc.name, items, counts, recalled: items.filter((i) => i.recall).map((i) => i.item_id), lines, next_scene: next ? { id: next.id, name: next.name, tagline: next.tagline } : null };
   }
 
   async function turn(j: Journey, input: Input & { romanized: string | null; attempt_id: string }): Promise<TurnResult> {
@@ -760,32 +860,6 @@ export function createMockApi(): Api {
     return wire(commit(j, run, reply, learner));
   }
 
-  // -- phrasebook ------------------------------------------------------------
-
-  function composePhrase(source: string): PhraseSegment[] {
-    const s = source.toLowerCase();
-    const has = (...w: string[]) => w.some((x) => s.includes(x));
-    const first = (...ids: string[]) => ids.flatMap((id) => gitem(id));
-    if (has("where")) return [...first("she", "where"), ...punct("?")];
-    if (has("seen", "know her", "friend", "looking for")) return [...first("seen", "friend"), ...punct("?")];
-    if (has("come on", "go on", "chant", "cheer")) return [...first("go_team"), ...punct("!")];
-    if (has("great", "brilliant", "amazing", "what a")) return [...first("awesome"), ...punct("!")];
-    if (has("goal")) return [...first("goal"), ...punct("!")];
-    if (has("drink", "cheers", "toast")) return [...first("cheers"), ...punct("!")];
-    if (has("thank")) return [...first("thanks"), ...punct("!")];
-    if (has("hello", "hi ", "good evening")) return [...first("hello"), ...punct("!")];
-    if (has("sorry", "understand", "repeat")) return [...first("sorry"), ...punct(".")];
-    return [...first("friend", "where"), ...punct("?")];
-  }
-
-  function silence(key: string, text: string): string {
-    const cached = audio.get(key);
-    if (cached) return cached;
-    const secs = Math.min(3.4, 0.7 + text.length * 0.17);
-    const url = URL.createObjectURL(encodeWav(new Float32Array(Math.round(16000 * secs)), 16000));
-    audio.set(key, url);
-    return url;
-  }
 
   // -- the contract ----------------------------------------------------------
 
@@ -825,7 +899,8 @@ export function createMockApi(): Api {
       await wait(hook.sceneMs);
       const run: SceneRun = {
         scene_id: id, turn: 0, complete: false, goals_done: [], transcript: [], help_uses: 0,
-        exchange: { posed_item_ids: [], phrasebook_item_ids: [], help_level: 0, line_ids: [], intent_hint: "" },
+        exchange: { posed_item_ids: [], help_level: 0, line_ids: [], intent_hint: "" },
+        expression: "neutral", patches: [],
       };
       if (body.restart) {
         j.game.flags = j.game.flags.filter((f) => !f.startsWith(`${id}:`));
@@ -881,29 +956,6 @@ export function createMockApi(): Api {
           : { level, kind: "hint", line_ids: [], hint: run.exchange.intent_hint };
       return wire({ help, progress: progress(j) });
     },
-    phrase: async (jid, token, text) => {
-      const j = need(jid, token);
-      await wait(hook.phraseMs);
-      if (hook.failNextPhrase) {
-        hook.failNextPhrase = false;
-        throw new ApiError(502, "model failure");
-      }
-      const source = text.trim();
-      if (!source || targetScript(source)) throw new ApiError(422, "support-language text only");
-      const segments = composePhrase(source).map((s) => (noRoman() ? { ...s, r: "" } : s));
-      const textOut = segments.map((s) => s.t).join(language().word_spacing ? " " : "");
-      const item_ids = Object.entries(lang.items).filter(([, it]) => segments.some((s) => s.t === it.text)).map(([id]) => id);
-      const p: Phrase = { phrase_id: uid("phr"), source, segments, text: textOut, romanization: segments.map((s) => s.r).filter(Boolean).join(" "), audio_url: "", item_ids };
-      p.audio_url = `/api/journeys/${j.journey_id}/phrases/${p.phrase_id}/audio`;
-      j.game.phrasebook = [p, ...j.game.phrasebook.filter((x) => x.text !== p.text)];
-      if (j.scene) j.scene.exchange.phrasebook_item_ids = [...new Set([...j.scene.exchange.phrasebook_item_ids, ...item_ids])];
-      save(j);
-      return wire(p);
-    },
-    phraseAudio: async (jid, token, phraseId) => {
-      const j = need(jid, token);
-      return silence(`phrase:${phraseId}`, j.game.phrasebook.find((p) => p.phrase_id === phraseId)?.text ?? "");
-    },
     finish: async (jid, token) => {
       const j = need(jid, token);
       if (!j.scene) throw new ApiError(409, "no scene in progress");
@@ -918,6 +970,7 @@ export function createMockApi(): Api {
       save(j);
       return wire(publicState(j));
     },
+    frameSrc: (_jid, _token, _layerId, url) => url ?? "",
     lineAudio: async (jid, token, lineId) => silence(lineId, need(jid, token).lines[lineId] ?? ""),
     itemAudio: async (jid, token, itemId) => {
       const j = need(jid, token);

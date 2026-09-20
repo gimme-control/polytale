@@ -14,7 +14,9 @@ from pydantic import BaseModel
 
 from core import game, gemini, vocab
 from core.content import Content
+from core.frames import BASE_EXPRESSION, FrameView
 from core.prompt import build_snapshot, build_system_prompt
+from core.romanize import romanize_utterance
 from core.state import (
     Attempt,
     Entry,
@@ -37,7 +39,18 @@ from core.tools import (
     is_error,
     tool_declarations,
 )
-from core.views import Ending, GameView, Progress, ending_view, game_view, progress_view
+from core.views import (
+    Ending,
+    GameView,
+    HeardWord,
+    WordEntry,
+    Progress,
+    ending_view,
+    game_view,
+    dictionary,
+    heard_words,
+    progress_view,
+)
 
 log = logging.getLogger("polytale.dm")
 
@@ -64,6 +77,13 @@ class TurnResult(BaseModel):
     game: GameView
     ending: Ending | None  # set on the turn that resolves the story
     latency_ms: int
+    #: the scene's vocabulary, word meanings only, heard-first
+    dictionary: list[WordEntry] = []
+    #: the words he has actually said, as he said them
+    heard: list[HeardWord] = []
+    #: what the scene looks like after this turn. Filled in by the server, which owns the
+    #: art; null when the scene does not react. Never waited on: the picture arrives later.
+    frame: FrameView | None = None
 
 
 # ---------------------------------------------------------------- scene flow
@@ -267,10 +287,12 @@ def _commit(
             line_id=(line_id := f"s{working.scene_index}-t{turn}-l{i}"),
             speaker_name=scene.npc.display_name(language.locale),
             segments=spec["segments"],
-            text=joiner.join(s.t for s in spec["segments"]),
+            text=(said := joiner.join(s.t for s in spec["segments"])),
             romanization=" ".join(s.r for s in spec["segments"] if s.r),
             item_ids=spec["item_ids"],
-            audio_url=line_audio_url(working.journey_id, line_id),
+            # Fingerprinted with the words it speaks: a restart reuses line ids, and a
+            # cached clip under a reused url is heard as the wrong line.
+            audio_url=line_audio_url(working.journey_id, line_id, said=said),
         )
         for i, spec in enumerate(terminal["lines"])
     ]
@@ -288,6 +310,7 @@ def _commit(
         line_ids=[line.line_id for line in lines],
         intent_hint=terminal["intent_hint"],
     )
+    run.expression = terminal.get("expression") or BASE_EXPRESSION
     run.started = True
     run.turn = turn + 1
     complete_ready_goals(working, scene)
@@ -304,6 +327,8 @@ def _commit(
         game=game_view(working, content),
         ending=ending_view(working, content) if ended else None,
         latency_ms=int((time.monotonic() - started_at) * 1000),
+        dictionary=dictionary(working, content),
+        heard=heard_words(working, content),
     )
 
 
@@ -321,10 +346,13 @@ def _play(
     if attempt is not None:
         attempt.consumed, attempt.turn = True, run.turn
         working.attempts[attempt.attempt_id] = attempt
+        # Speech recognition hands back a romanization; typing does not. Fill that gap from
+        # the lexicon so the learner can always read their own line back.
+        romanized = attempt.romanized or romanize_utterance(attempt.transcript, language)
         run.transcript.append(
             LearnerEntry(
                 turn=run.turn, attempt_id=attempt.attempt_id, input_mode=attempt.input_mode,
-                transcript=attempt.transcript, romanized=attempt.romanized,
+                transcript=attempt.transcript, romanized=romanized,
             )
         )
     ctx = ToolContext(scene=scene, language=language, attempt=attempt)

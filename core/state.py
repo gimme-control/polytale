@@ -6,6 +6,7 @@ journey (it outlives scenes); everything about the scene being played lives on i
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 
 from core.content import Content
+from core.frames import BASE_EXPRESSION, FramePatch
 
 STATES_ROOT = Path(__file__).resolve().parents[1] / "states"
 SCHEMA_VERSION = 4
@@ -161,24 +163,6 @@ class SceneRef(BaseModel):
     tagline: str = ""
 
 
-class PhraseSegment(BaseModel):
-    t: str
-    r: str = ""
-    g: str = ""  # per-word gloss: it is the player's own sentence, so glossing it is fine
-
-
-class Phrase(BaseModel):
-    """One "How do I say…?" lookup, kept as the player's own phrasebook."""
-
-    phrase_id: str
-    source: str
-    segments: list[PhraseSegment]
-    text: str
-    romanization: str
-    audio_url: str
-    item_ids: list[str] = Field(default_factory=list)
-
-
 class Summary(BaseModel):
     scene_id: str
     scene_name: str
@@ -187,7 +171,6 @@ class Summary(BaseModel):
     recalled: list[str] = Field(default_factory=list)
     lines: list[str] = Field(default_factory=list)
     next_scene: SceneRef | None = None
-    phrasebook: list[Phrase] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- scene run + journey
@@ -200,7 +183,6 @@ class Exchange(BaseModel):
     help_level: int = Field(default=0, ge=0, le=2)
     line_ids: list[str] = Field(default_factory=list)
     intent_hint: str = ""
-    phrasebook_item_ids: list[str] = Field(default_factory=list)  # looked up this exchange
 
 
 class SceneRun(BaseModel):
@@ -211,6 +193,10 @@ class SceneRun(BaseModel):
     goals_done: list[str] = Field(default_factory=list)
     transcript: list[Entry] = Field(default_factory=list)
     exchange: Exchange = Field(default_factory=Exchange)
+    #: what the player is looking at: the face the character wears, and every visible beat
+    #: committed so far. The plate itself never changes; these are patches over it.
+    expression: str = BASE_EXPRESSION
+    patches: list[FramePatch] = Field(default_factory=list)
 
 
 class Game(BaseModel):
@@ -219,7 +205,6 @@ class Game(BaseModel):
     trust: dict[str, int] = Field(default_factory=dict)  # scene_id -> the character's trust
     clues: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
-    phrasebook: list[Phrase] = Field(default_factory=list)
     ending_id: str | None = None
 
 
@@ -239,17 +224,21 @@ class Journey(BaseModel):
         return self.vocab.setdefault(item_id, VocabRecord())
 
 
-def line_audio_url(journey_id: str, line_id: str) -> str:
-    """Relative audio URL; the client appends the journey token."""
-    return f"/api/journeys/{journey_id}/lines/{line_id}/audio"
+def line_audio_url(journey_id: str, line_id: str, *, said: str = "") -> str:
+    """Relative audio URL; the client appends the journey token.
+
+    ``said`` fingerprints the words this clip speaks, so the URL is content-addressed. Line
+    ids restart at ``s0-t0-l0`` every time a scene is restarted while the journey keeps its
+    id, so without this the SAME url names different words on either side of a restart and a
+    browser holding the clip (it is served cacheable for a day) plays the old line under the
+    new subtitle.
+    """
+    stamp = f"?v={hashlib.sha256(said.encode('utf-8')).hexdigest()[:10]}" if said else ""
+    return f"/api/journeys/{journey_id}/lines/{line_id}/audio{stamp}"
 
 
 def item_audio_url(journey_id: str, item_id: str) -> str:
     return f"/api/journeys/{journey_id}/items/{item_id}/audio"
-
-
-def phrase_audio_url(journey_id: str, phrase_id: str) -> str:
-    return f"/api/journeys/{journey_id}/phrases/{phrase_id}/audio"
 
 
 def new_journey(content: Content, journey_id: str, *, language: str) -> Journey:

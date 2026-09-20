@@ -1,6 +1,6 @@
 """REST API contract: auth, scene entry, transcribe → act, text acts, the game ledgers
-(clues, trust), phrasebook, help, audio, ending, summary, reset. Real core engine + scripted
-fake Gemini + fake speech (offline).
+(clues, trust), the word dictionary, help, audio, ending, summary, reset. Real core engine +
+scripted fake Gemini + fake speech (offline).
 
 Run: PYTHONPATH=. python scripts/test_server_api.py
 """
@@ -21,9 +21,8 @@ os.environ["POLYTALE_STATES_DIR"] = tempfile.mkdtemp(prefix="polytale-api-")
 from fastapi.testclient import TestClient
 
 import media
-from core import dm, phrasebook
+from core import dm
 from core.content import load_content
-from core.state import Phrase, PhraseSegment
 from media.stt import LanguageHint, TranscriptionResult
 from media.tts import AudioClip
 from scripts.testkit import Checker, call, lexicon_line, reply, say
@@ -75,27 +74,10 @@ def fake_synthesize(text: str, *, language: str, voice: dict, variant: str = "no
     return AudioClip(path=path, mime="audio/wav", provider="fake", cached=False)
 
 
-PHRASE: dict[str, Any] = {"raise": None, "calls": 0}
-
-
-def fake_translate(journey, content, text: str) -> Phrase:
-    """Stands in for the phrasebook's model call; the real refusal rules still run first."""
-    PHRASE["calls"] += 1
-    if PHRASE["raise"] is not None:
-        raise PHRASE["raise"]
-    if not text.strip():
-        raise phrasebook.PhraseRefused("empty", "type what you want to say")
-    item = LANG.items["where"]
-    return Phrase(phrase_id=f"p-{PHRASE['calls']}", source=text.strip(),
-                  segments=[PhraseSegment(t=item.text, r=item.roman, g="where")],
-                  text=item.text, romanization=item.roman, item_ids=["where"],
-                  audio_url=f"/api/journeys/{journey.journey_id}/phrases/p-{PHRASE['calls']}/audio")
-
-
 def real_deps() -> Deps:
     return Deps(run_turn=partial(dm.run_turn, client=FAKE, models=["fake"]),
                 run_opening=partial(dm.run_opening, client=FAKE, models=["fake"]),
-                translate=fake_translate, transcribe=fake_transcribe, synthesize=fake_synthesize)
+                transcribe=fake_transcribe, synthesize=fake_synthesize)
 
 
 app.state.deps = real_deps()
@@ -145,11 +127,13 @@ def test_auth() -> None:
     jid, hdr, body = new_journey()
     T.check("fresh journey has no scene", body["state"]["scene"] is None
             and body["state"]["started"] is False, body["state"])
-    T.check("fresh journey: story, empty ledgers, empty phrasebook",
+    T.check("fresh journey: story, empty ledgers, no dictionary before a scene",
             body["state"]["story"]["title"] == CONTENT.journey.title
             and body["state"]["game"] == {"trust": 0, "clues": []}
-            and body["state"]["phrasebook"] == [] and body["state"]["ending"] is None,
+            and body["state"]["dictionary"] == [] and body["state"]["ending"] is None,
             body["state"].get("game"))
+    T.check("no phrasebook survives anywhere in the payload",
+            "phrase" not in json.dumps(body["state"]).lower(), body["state"])
     T.check("the public state carries no wallet, clock, persona or zones",
             not any(k in json.dumps(body["state"])
                     for k in ("wallet", "minutes_left", "persona", "zones", "difficulty")))
@@ -205,7 +189,10 @@ def test_journey() -> None:
                                             headers=hdr).status_code == 409)
 
     # audio
-    url = f"{line['audio_url']}?token={token}"
+    # audio_url is content-addressed (?v=<fingerprint>), so the token joins with & — the
+    # same rule the client's withToken() uses.
+    sep = "&" if "?" in line["audio_url"] else "?"
+    url = f"{line['audio_url']}{sep}token={token}"
     r = client.get(url)
     T.check("line audio served", r.status_code == 200 and r.headers["content-type"] == "audio/wav")
     T.check("the character's own voice reaches tts", SYNTH[-1][1] == BAR.npc.voice.style)
@@ -225,39 +212,30 @@ def test_journey() -> None:
     h2 = client.post(f"/api/journeys/{jid}/help", headers=hdr).json()
     T.check("help 2 = intent hint", h2["help"]["kind"] == "hint" and "join" in h2["help"]["hint"])
 
-    # phrasebook: no turn; marks the exchange; audio in the neutral voice
-    before = client.get(f"/api/journeys/{jid}", headers=hdr).json()
-    r = client.post(f"/api/journeys/{jid}/phrase", json={"text": "where is she?"}, headers=hdr)
-    found = r.json()
-    T.check("phrase shape", r.status_code == 200 and set(found) == {
-        "phrase_id", "source", "segments", "text", "romanization", "audio_url", "item_ids"}
-            and set(found["segments"][0]) == {"t", "r", "g"} and found["item_ids"] == ["where"],
-            found)
-    after = client.get(f"/api/journeys/{jid}", headers=hdr).json()
-    T.check("a lookup costs no turn and is kept in the phrasebook",
-            after["turn"] == before["turn"]
-            and [p["phrase_id"] for p in after["phrasebook"]] == [found["phrase_id"]])
-    SYNTH.clear()
-    r = client.get(f"{found['audio_url']}?token={token}")
-    T.check("phrase audio uses the language's phrasebook voice",
-            r.status_code == 200 and SYNTH[-1] == (found["text"], LANG.phrasebook_voice.style))
-    T.check("unknown phrase 404", client.get(
-        f"/api/journeys/{jid}/phrases/p-nope/audio?token={token}").status_code == 404)
-    T.check("phrase audio needs the token", client.get(found["audio_url"]).status_code == 403)
-    r = client.post(f"/api/journeys/{jid}/phrase", json={"text": "  "}, headers=hdr)
-    T.check("empty text 422 with a typed code",
-            r.status_code == 422 and r.json()["detail"]["code"] == "empty", r.text)
-    PHRASE["raise"] = phrasebook.PhraseRefused("target_language", "type it in English")
-    r = client.post(f"/api/journeys/{jid}/phrase", json={"text": LANG.items["cheers"].text},
-                    headers=hdr)
-    T.check("target-language text 422", r.status_code == 422
-            and r.json()["detail"]["code"] == "target_language")
-    PHRASE["raise"] = phrasebook.PhraseError("down")
-    T.check("phrasebook model failure 502", client.post(
-        f"/api/journeys/{jid}/phrase", json={"text": "hi"}, headers=hdr).status_code == 502)
-    PHRASE["raise"] = None
-    T.check("phrase needs the token", client.post(f"/api/journeys/{jid}/phrase",
-                                                  json={"text": "hi"}).status_code == 403)
+    # the dictionary: this scene's words and what each ONE means, never a whole sentence
+    said = ["hello", "cheers"]  # the two lines of the opening
+    expected = said + [i for i in BAR.item_ids if i not in said]
+    for where, payload in (("turn result", opening["dictionary"]),
+                           ("public state", client.get(f"/api/journeys/{jid}",
+                                                       headers=hdr).json()["dictionary"])):
+        T.check(f"{where}: the whole scene's words, the ones he has said first",
+                [w["item_id"] for w in payload] == expected, payload)
+        T.check(f"{where}: each entry is text + roman + gloss + heard",
+                all(set(w) == {"item_id", "text", "roman", "gloss", "heard"} for w in payload)
+                and all(w["text"] == LANG.items[w["item_id"]].text
+                        and w["roman"] == LANG.items[w["item_id"]].roman
+                        and w["gloss"] == LANG.items[w["item_id"]].gloss for w in payload),
+                payload[:2])
+        T.check(f"{where}: heard is true only for words he has actually spoken",
+                [w["item_id"] for w in payload if w["heard"]] == said, payload)
+    T.check("the phrasebook is gone from every payload",
+            not any("phrase" in json.dumps(p).lower() for p in (
+                opening, client.get(f"/api/journeys/{jid}", headers=hdr).json())))
+    T.check("the phrasebook routes are gone",
+            client.post(f"/api/journeys/{jid}/phrase", json={"text": "hi"},
+                        headers=hdr).status_code == 404
+            and client.get(f"/api/journeys/{jid}/phrases/p-1/audio?token={token}"
+                           ).status_code == 404)
 
     # speech: transcribe → failed turn → same attempt resent
     STT_RESULT["value"] = TranscriptionResult(LANG.items["where"].text, LANG.items["where"].roman,
@@ -316,9 +294,9 @@ def test_journey() -> None:
             and set(res["ending"]["stats"]) == {"clues", "words_mastered", "words_shaky"},
             res["ending"])
     where = next(i for i in res["summary"]["items"] if i["item_id"] == "where")
-    T.check("summary: glosses, honest outcome (the intent hint was used → with_hint), phrasebook",
-            where["gloss"] == LANG.items["where"].gloss and where["outcomes"] == ["with_hint"]
-            and [p["source"] for p in res["summary"]["phrasebook"]] == ["where is she?"], where)
+    T.check("summary: glosses, honest outcome (the intent hint was used → with_hint)",
+            where["gloss"] == LANG.items["where"].gloss and where["outcomes"] == ["with_hint"],
+            where)
     T.check("act after completion 409", client.post(f"/api/journeys/{jid}/act", json={"text": "x"},
                                                     headers=hdr).status_code == 409)
     T.check("item audio on summary", client.get(
@@ -329,13 +307,10 @@ def test_journey() -> None:
                 "transcript"]} and restored["ending"]["id"] == "found")
     T.check("no further scene after the ending: 409",
             client.post(f"/api/journeys/{jid}/scene", json={}, headers=hdr).status_code == 409)
-    T.check("the phrasebook still answers after the ending", client.post(
-        f"/api/journeys/{jid}/phrase", json={"text": "thank you"}, headers=hdr).status_code == 200)
-
     r = client.post(f"/api/journeys/{jid}/reset", headers=hdr)
     T.check("reset → fresh journey, same token",
             r.status_code == 200 and r.json()["scene"] is None and r.json()["ending"] is None
-            and r.json()["phrasebook"] == []
+            and r.json()["dictionary"] == []
             and client.get(f"/api/journeys/{jid}", headers=hdr).status_code == 200)
 
 

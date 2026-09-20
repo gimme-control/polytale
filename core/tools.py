@@ -23,6 +23,16 @@ from core.content import (
     Scene,
     is_latin,
 )
+from core.frames import (
+    BASE_EXPRESSION,
+    EXPRESSION_NOTES,
+    EXPRESSIONS,
+    MAX_BEAT_WORDS,
+    MAX_PATCHES,
+    REGION_NOTES,
+    REGIONS,
+    FramePatch,
+)
 from core.state import (
     Attempt,
     ClueEntry,
@@ -36,7 +46,7 @@ from core.state import (
 TERMINAL_TOOL = "say"
 RESULTS = ("understood", "missed")
 MAX_LINES = 3
-MAX_WORD_SEGMENTS = 14
+MAX_WORD_SEGMENTS = 10  # hard backstop; the prompt asks for a few words
 MAX_NARRATION_WORDS = 60  # the GM is told 45; the slack keeps a good turn from bouncing
 MAX_HINT_WORDS = 16
 
@@ -49,6 +59,7 @@ class ToolContext:
     language: Language
     attempt: Attempt | None = None
     trust_adjusted: bool = False
+    beat_shown: bool = False
     round_errors: list[str] = field(default_factory=list)
     terminal: dict[str, Any] | None = None
 
@@ -238,6 +249,30 @@ def exec_set_flag(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> s
     return _ok(journey, ctx, f"flag {flag.id} set.{note}{_goal_note(journey, ctx.scene)}")
 
 
+def exec_show_beat(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
+    """Paint a one-off visible change into one rectangle of the scene. Not the face.
+
+    The change is committed here; the picture is painted after the turn is delivered, so this
+    never makes the player wait.
+    """
+    run = _run(journey)
+    region, change = _str(args, "region"), _str(args, "change")
+    if region not in REGIONS:
+        return _err(journey, ctx, f"unknown region '{region}'. Valid: {', '.join(REGIONS)}")
+    if not change:
+        return _err(journey, ctx, "change is required: what does the player now see there?")
+    if len(change.split()) > MAX_BEAT_WORDS:
+        return _err(journey, ctx, f"change: at most {MAX_BEAT_WORDS} words, one plain thing")
+    if ctx.beat_shown:
+        return _ok(journey, ctx, "the room already changed this turn (no change)")
+    if len(run.patches) >= MAX_PATCHES:
+        return _ok(journey, ctx, "nothing painted: the scene has changed as much as it can. "
+                                 "Put this one in the narration instead")
+    ctx.beat_shown = True
+    run.patches.append(FramePatch(region=region, change=change))
+    return _ok(journey, ctx, f"the player will see it: {region} — {change}")
+
+
 def describe_when(when: GoalWhen) -> str:
     """Plain-words goal condition for receipts and the snapshot."""
     clauses: list[str] = []
@@ -311,19 +346,28 @@ def _validate_line(
     if words == 0:
         return None, f"{where} has no words"
     if words > MAX_WORD_SEGMENTS:
-        return None, f"{where} is too long ({words} words): say less, at most 8 words a line"
+        return None, (f"{where} is too long ({words} words): at most "
+                      f"{MAX_WORD_SEGMENTS} words a line")
     item_ids = _str_list(raw.get("item_ids"))
     if item_ids is None:
         return None, f"{where}.item_ids must be a list"
     for item_id in item_ids:
         if item_id not in scene.item_ids:
             return None, f"{where}.item_ids: unknown item '{item_id}'"
-    # The ledger counts a listed word only when it was really said: one segment (each part,
-    # for a frame) spelled as the lexicon spells it. A tag without the word is dropped, a word
-    # without its tag is added; neither is worth bouncing the turn.
+    # The ledger counts a word only when it was really said. He talks like a person, so he inflects and swaps articles rather than quoting the
+    # lexicon. Match tolerantly (amigo -> amiga, "una foto" -> "la foto"), and keep the exact
+    # whole-phrase check as well so a multi-word item still registers when he says it whole.
+    hit = {
+        item_id
+        for _said, item_id in vocab.scan_items(
+            [s.t for s in segments if is_word(s.t)], ctx.language
+        )
+        if item_id is not None
+    }
     item_ids = [
         i for i in scene.item_ids
-        if all(spoken(segments, p, ctx.language.word_spacing)
+        if i in hit
+        or all(spoken(segments, p, ctx.language.word_spacing)
                for p in ctx.language.items[i].parts)
     ]
     return {"segments": segments, "item_ids": item_ids}, None
@@ -365,7 +409,14 @@ def exec_say(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
         return _err(journey, ctx, "intent_hint is required: what do you want from the learner?")
     if len(hint.split()) > MAX_HINT_WORDS:
         return _err(journey, ctx, f"intent_hint: at most {MAX_HINT_WORDS} words")
-    ctx.terminal = {"lines": lines, "narration": narration, "intent_hint": hint}
+    # An omitted face settles back to the everyday one, so a puzzled look never sticks; a
+    # face that is not one of the scene's is a mistake worth bouncing.
+    expression = _str(args, "expression") or BASE_EXPRESSION
+    if expression not in EXPRESSIONS:
+        return _err(journey, ctx, f"unknown expression '{expression}'. Valid: "
+                                  f"{', '.join(EXPRESSIONS)}")
+    ctx.terminal = {"lines": lines, "narration": narration, "intent_hint": hint,
+                    "expression": expression}
     return _ok(journey, ctx, "said; the turn ends")
 
 
@@ -376,6 +427,7 @@ EXECUTORS: dict[str, Executor] = {
     "reveal_clue": exec_reveal_clue,
     "set_flag": exec_set_flag,
     "record_item": exec_record_item,
+    "show_beat": exec_show_beat,
     TERMINAL_TOOL: exec_say,
 }
 
@@ -506,6 +558,33 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
             },
         })
     decls.append({
+        "name": "show_beat",
+        "description": (
+            "Something the player can SEE happens in the room, and the picture changes to "
+            "show it: a drink set down in front of them, a scarf pushed into their hands, "
+            "the people behind him on their feet. Use it for a real, physical beat worth "
+            "looking at — most turns have none, and the face (say.expression) carries the "
+            "rest. One per turn. What you paint stays there for the rest of the act, so "
+            "never paint something that has to go away again."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "region": _enum(list(REGIONS), "Where in the picture it happens. "
+                                + "; ".join(f"{r}: {REGION_NOTES[r]}" for r in REGIONS)),
+                "change": {
+                    "type": "string",
+                    "description": (
+                        f"{SUPPORT_LANGUAGE}, at most {MAX_BEAT_WORDS} words: what is now "
+                        "there to see, described as a painter would need it. One plain "
+                        "thing, present tense, no people added or removed."
+                    ),
+                },
+            },
+            "required": ["region", "change"],
+        },
+    })
+    decls.append({
         "name": TERMINAL_TOOL,
         "description": (
             "TERMINAL: the turn the player sees. Call it in the SAME response as your other "
@@ -529,13 +608,23 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                 "intent_hint": {
                     "type": "string",
                     "description": (
-                        f"Required. {SUPPORT_LANGUAGE}, at most 14 words: what your "
-                        "character wants from the player right now. Intent only: never "
-                        "quote your words, never pair a word with its meaning."
+                        f"Required. {SUPPORT_LANGUAGE}, at most 14 words: the ONE thing "
+                        "your character wants the player to do next, as a plain, concrete "
+                        "instruction they could act on ('show him the photo', 'ask where "
+                        "she went', 'raise your glass with him'). One action, never two "
+                        "joined by 'and'. Intent only: never quote your words, never pair "
+                        "a word with its meaning."
                     ),
                 },
+                "expression": _enum(
+                    list(EXPRESSIONS),
+                    "Required. The face your character is wearing as they say this — the "
+                    "player sees it. Choose it with the line, not after it: "
+                    + "; ".join(f"{e}: {EXPRESSION_NOTES[e]}" for e in EXPRESSIONS)
+                    + f". Go back to {BASE_EXPRESSION} when the moment has passed.",
+                ),
             },
-            "required": ["narration", "lines", "intent_hint"],
+            "required": ["narration", "lines", "intent_hint", "expression"],
         },
     })
     return decls

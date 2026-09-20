@@ -95,22 +95,24 @@ def _bg_tail(who: str) -> str:
 
 BAR_BG = f"""{STYLE}
 
-FIRST-PERSON point of view of a customer sitting on a bar stool at the counter of a small,
-late-night neighbourhood bar in a Chinese city, on the night of a huge football final. Eye-level,
-straight-on, symmetrical-ish framing, 16:9.
+FIRST-PERSON point of view of someone standing at the counter of a small, late-night
+neighbourhood bar near a stadium, taken over tonight by travelling away supporters for a huge
+football final. Eye-level, straight-on, symmetrical-ish framing, 16:9.
 
-THE BARTENDER: a Chinese man in his mid-40s standing directly behind the counter, framed
-waist-up, placed at the horizontal CENTRE of the image. Short dark hair with a little grey, light
-stubble. Tonight he wears a PLAIN deep-red short-sleeved football jersey — one flat colour with a
-simple darker collar, no crest, no number, no lettering, no stripes, no logo — under his dark
-apron. Calm, wry, self-possessed. He looks straight at the viewer with a NEUTRAL, relaxed
-expression, mouth closed. Both hands rest flat on the far edge of the counter in front of him,
-empty.
+THE SUPPORTER: a man in his thirties standing on the far side of the counter, framed waist-up,
+placed at the horizontal CENTRE of the image. He is a travelling fan, not staff: NO apron, NO
+uniform, NO bar towel. Short dark hair, light stubble. He wears a PLAIN deep-red short-sleeved
+football jersey — one flat colour with a simple darker collar, no crest, no number, no lettering,
+no stripes, no logo — and a PLAIN knitted red-and-white striped football scarf hanging loose
+around his neck, over his shoulders, ends down his chest. Warm, wry, pleased to be here. He looks
+straight at the viewer with a NEUTRAL, relaxed expression, mouth closed. Both hands rest flat on
+the far edge of the counter in front of him, empty. His face is unobstructed and clearly visible:
+nothing crosses it, the scarf stays below his chin.
 
 THE BACK WALL behind him: dark wood panelling with a long back counter inside a warmly lit alcove
 (hidden warm light strip above it) running behind him at the height of his elbows. IMPORTANT: the
 back counter top is almost completely BARE — long clear empty stretches to the LEFT and to the
-RIGHT of the bartender, where props will be added later. There are NO bottles and NO objects on
+RIGHT of the supporter, keeping the composition clean. There are NO bottles and NO objects on
 the back counter at all: BOTH ends of it are bare, lit, empty wood (if a previous version shows a
 cluster of bottles standing at the left end of the back counter, REMOVE it and paint the bare
 counter and the lit alcove wall behind it). Above the alcove, a dark shelf in shadow
@@ -131,20 +133,19 @@ composited later).
 
 THE NEAR COUNTER: a dark, polished, worn wooden bar counter fills the bottom 27% of the frame,
 running edge to edge, seen from slightly above. Its surface is completely EMPTY — no glasses, no
-coasters, no napkins, no objects at all — and evenly, softly lit so that props can be placed on
-it later.
+coasters, no napkins, no objects at all — and evenly, softly lit.
 
 LIGHT: night. Warm tungsten practical lamps and a soft pool of light on the counter, against a
 faint cool bluish-white flicker falling in from OUTSIDE the frame beyond the top-right corner (its
-source is never visible), rimming the bartender's shoulder and the right side of the room.
+source is never visible), rimming the supporter's shoulder and the right side of the room.
 
-{_bg_tail("the bartender")}"""
+{_bg_tail("the supporter")}"""
 
 COVERS = {
     "bar": f"""{STYLE}
 
 Establishing shot, 16:9: the exterior doorway of a small neighbourhood corner bar on a narrow
-side street in a Chinese city, late at night, just after rain, on the night of a huge football
+side street a few minutes from a stadium, late at night, just after rain, on the night of a huge football
 final. A dark wood-and-glass door and one steamed-up window glow warm amber from inside, where
 bottles and a bar counter are only vague soft shapes, and a cool blue-white television glow
 flickers through the fogged glass from high inside. Through the fogged glass NOTHING is legible:
@@ -192,7 +193,7 @@ ILLUSTRATIONS: dict[str, tuple[str, str, list[str]]] = {
         "scenes/bar/art/ending_kickoff.webp",
         f"""{STYLE}
 
-FIRST-PERSON point of view, 16:9: you are standing in a packed outdoor FAN ZONE in a Chinese city
+FIRST-PERSON point of view, 16:9: you are standing in a packed outdoor FAN ZONE by the stadium
 at night, at the moment of kickoff of a huge football final. Ahead, above the heads of the crowd,
 {_BIG_SCREEN}. Red flare smoke drifts through the floodlights and confetti hangs in the air.
 {_CROWD}{_MEI_REF}She is RIGHT BESIDE the viewer in the near foreground on the right, turning
@@ -206,7 +207,7 @@ border.""",
         "scenes/bar/art/ending_late.webp",
         f"""{STYLE}
 
-FIRST-PERSON point of view, 16:9: you arrive late at a packed outdoor FAN ZONE in a Chinese city at
+FIRST-PERSON point of view, 16:9: you arrive late at a packed outdoor FAN ZONE by the stadium at
 night, at the exact moment of a GOAL. The whole crowd is mid-eruption — jumping, arms thrown up,
 beer spraying, confetti and red flare smoke — backlit by {_BIG_SCREEN}. {_CROWD}{_MEI_REF}She
 has spotted the viewer: in the near foreground she pushes out of the crowd toward the viewer,
@@ -221,7 +222,7 @@ chaos, motion blur at the edges, warm skin tones against the cool screen light. 
         f"""{STYLE}
 
 Title key art, 16:9, for a story set in the world of the attached painting (same city, same
-finish, same palette): a rain-wet narrow street in a Chinese city on the night of a huge football
+finish, same palette): a rain-wet narrow street by the stadium on the night of a huge football
 final, seen from street level. Strings of small PLAIN triangular pennants in mixed flat colours
 criss-cross the lane overhead. At the far END of the street, the cool blue-white glow of a giant
 outdoor screen — only a blurred, overexposed rectangle of light with no readable content — and a

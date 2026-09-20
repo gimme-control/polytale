@@ -25,19 +25,19 @@ export function InputBar() {
   const retryFailed = useGame((s) => s.retryFailed);
   const sendText = useGame((s) => s.sendText);
   const draft = useGame((s) => s.draft);
-  const setPhraseOpen = useGame((s) => s.setPhraseOpen);
-  const hasPhrasebook = useGame((s) => !!s.game);
 
   const [text, setText] = useState("");
   const field = useRef<HTMLInputElement | null>(null);
   const spaceHeld = useRef(false);
 
-  // "Use it" from the phrasebook lands here; the learner still sends it (or says it).
+  // A tapped dictionary word lands here; the learner still sends it (or says it).
   useEffect(() => {
     if (!draft.nonce) return;
-    setText(draft.text);
+    setText((prev) =>
+      draft.append && prev.trim() ? `${prev.trimEnd()} ${draft.text}` : draft.text
+    );
     window.setTimeout(() => field.current?.focus(), 0);
-    // Consumed: a later remount (next scene) must not bring the phrase back.
+    // Consumed: a later remount (next scene) must not bring the word back.
     useGame.setState({ draft: { text: "", nonce: 0 } });
   }, [draft]);
 
@@ -101,13 +101,6 @@ export function InputBar() {
 
   return (
     <div className="pointer-events-none mx-auto w-full max-w-[680px] shrink-0 pb-4 pt-3 sm:pb-7 sm:pt-5 [@media(max-height:520px)]:sm:pb-3">
-      {hasPhrasebook && (
-        <div className="flex justify-center pb-2">
-          <button type="button" data-testid="phrasebook-open" onClick={() => setPhraseOpen(true)} className="over-art pointer-events-auto border-0 bg-transparent px-1 py-1 text-[13px] font-medium text-ink-2 underline decoration-hair-2 underline-offset-4 hover:text-ink">
-            How do I say…?
-          </button>
-        </div>
-      )}
       <div className="flex min-h-6 items-end justify-center pb-1.5">
         {notice && (
           <p data-testid="notice" role="status" className="fade-in over-art pointer-events-auto m-0 flex items-center gap-3 text-[13px] text-ink-2">

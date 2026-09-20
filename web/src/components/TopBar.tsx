@@ -37,7 +37,7 @@ export function SceneStatus({ children }: { children?: React.ReactNode }) {
   );
 }
 
-export function Controls({ onHistory, onNotebook }: { onHistory: () => void; onNotebook: () => void }) {
+export function Controls({ onHistory, onNotebook, onDictionary }: { onHistory: () => void; onNotebook: () => void; onDictionary: () => void }) {
   const progress = useGame((s) => s.progress);
   const helpBusy = useGame((s) => s.helpBusy);
   const phase = useGame((s) => s.phase);
@@ -63,6 +63,12 @@ export function Controls({ onHistory, onNotebook }: { onHistory: () => void; onN
           <span className="hidden sm:inline">{next ? next.label : "No more help"}</span>
           <span className="sm:hidden">{next ? (next.level === 1 ? "Again" : "Hint") : "No help"}</span>
         </button>
+        {hasGame && (
+          <IconButton testid="dictionary-button" label="Dictionary" onClick={onDictionary}>
+            <path d="M3.75 4.5A1.25 1.25 0 0 1 5 3.25h8.5v11.5H5A1.25 1.25 0 0 1 3.75 13.5v-9Z" />
+            <path d="M6.5 6.5h4.25M6.5 9h2.75" />
+          </IconButton>
+        )}
         {hasGame && (
           <IconButton testid="notebook-button" label={unseen ? `Notebook, ${unseen} new` : "Notebook"} onClick={onNotebook}>
             <path d="M5 2.75h8.25v12.5H5a1.25 1.25 0 0 1-1.25-1.25V4A1.25 1.25 0 0 1 5 2.75ZM6.75 6h4M6.75 8.75h4" />

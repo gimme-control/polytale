@@ -7,7 +7,7 @@ import re
 from core import vocab
 from core.content import load_content
 from core.dm import enter_scene, finish_scene
-from core.state import Exchange, Journey, Phrase, new_journey
+from core.state import Exchange, Journey, new_journey
 from core.summary import build_summary
 from scripts.testkit import Checker
 
@@ -48,8 +48,6 @@ def played_bar() -> Journey:
     j.game.clues = ["regular", "gate"]
     j.game.flags = ["photo_shown"]
     j.scene.goals_done = ["ask", "trail"]
-    j.game.phrasebook = [Phrase(phrase_id="p-1", source="where is she?", text="x",
-                                romanization="y", audio_url="/a", segments=[])]
     return j
 
 
@@ -82,8 +80,6 @@ def test_bar_summary() -> None:
             and summary.counts.heard == sum(1 for i in summary.items
                                             if i.heard and i.state == "not_encountered")
             and items[TARGETS[0]].heard and not items[TARGETS[-1]].heard, summary.counts)
-    T.check("the summary carries the player's own phrasebook",
-            [p.source for p in summary.phrasebook] == ["where is she?"])
     T.check("nothing is recalled in the first scene",
             summary.recalled == [] and not any(i.recall for i in summary.items))
     T.check("a one-act journey has no next scene", summary.next_scene is None)

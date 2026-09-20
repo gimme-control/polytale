@@ -6,10 +6,14 @@ learner asked for, what they looked up), never from anything the model claims.
 
 from __future__ import annotations
 
+import unicodedata
+from collections.abc import Sequence
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.content import Language
 from core.state import Exchange, Journey, Outcome, Result, VocabRecord
 
 MAX_HELP_LEVEL = 2
@@ -51,7 +55,7 @@ def outcome_for(exchange: Exchange, item_id: str, understood: bool) -> Outcome:
         return "missed"
     if exchange.help_level >= 2:
         return "with_hint"
-    if exchange.help_level == 1 or item_id in exchange.phrasebook_item_ids:
+    if exchange.help_level == 1:
         return "with_help"
     return "first_try"
 
@@ -120,3 +124,95 @@ def request_help(journey: Journey) -> Help:
         return Help(level=1, kind="again", line_ids=list(exchange.line_ids))
     return Help(level=2, kind="hint", line_ids=list(exchange.line_ids),
                 hint=exchange.intent_hint or None)
+
+# ---------------------------------------------------------------- lexicon matching
+
+MIN_STEM = 4  # shortest prefix that may stand in for an inflected form
+
+
+def fold(text: str) -> str:
+    """Compare the way speech varies, not the way it is spelled: no marks, no case."""
+    plain = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in plain if not unicodedata.combining(ch)).strip().casefold()
+
+
+def lexicon_index(language: Language) -> dict[str, str]:
+    """Folded surface form -> item id, for forms that can only mean one thing.
+
+    A whole listed form always goes in. A single word OF a listed phrase goes in only when no
+    other item uses that word: "foto" belongs to "la foto" alone and is safe, but "esta" sits
+    in both "donde esta" and "esta noche", so on its own it means nothing and is left out.
+    Indexing it anyway is how "esta noche" once came back glossed "where is (she)?".
+    """
+    owners: dict[str, set[str]] = {}
+    index: dict[str, str] = {}
+    for item_id, item in language.items.items():
+        for part in item.parts:
+            index.setdefault(fold(part), item_id)
+            for word in part.split():
+                owners.setdefault(fold(word), set()).add(item_id)
+    for word, ids in owners.items():
+        if len(ids) == 1 and word not in index:
+            index[word] = next(iter(ids))
+    return index
+
+
+def phrase_forms(language: Language) -> list[tuple[list[str], str]]:
+    """Multi-word listed forms as folded word runs, longest first."""
+    forms = [
+        ([fold(w) for w in part.split()], item_id)
+        for item_id, item in language.items.items()
+        for part in item.parts
+        if len(part.split()) > 1
+    ]
+    return sorted(forms, key=lambda f: len(f[0]), reverse=True)
+
+
+def match_item(text: str, index: dict[str, str]) -> str | None:
+    """The lexicon item a single spoken word belongs to, tolerating a different ending."""
+    key = fold(text)
+    if not key:
+        return None
+    if key in index:
+        return index[key]
+    # An inflected form shares a long prefix with the listed one (amigo/amiga). Kept tight so
+    # two genuinely different words cannot collide.
+    best: tuple[int, str] | None = None
+    for surface, item_id in index.items():
+        if abs(len(surface) - len(key)) > 2:
+            continue
+        shared = 0
+        for a, b in zip(surface, key):
+            if a != b:
+                break
+            shared += 1
+        if shared >= MIN_STEM and shared >= min(len(surface), len(key)) - 2:
+            if best is None or shared > best[0]:
+                best = (shared, item_id)
+    return best[1] if best else None
+
+
+def scan_items(
+    words: Sequence[str], language: Language
+) -> list[tuple[str, str | None]]:
+    """Walk spoken words left to right: ``(what was said, the item it is)``.
+
+    A listed PHRASE only counts when its words really are said together, so "esta noche" is
+    one entry meaning tonight and never two wrong ones. Anything unrecognised comes back with
+    ``None`` rather than being dropped: he talks freely, and the player still heard it.
+    """
+    index, phrases = lexicon_index(language), phrase_forms(language)
+    folded = [fold(w) for w in words]
+    out: list[tuple[str, str | None]] = []
+    i = 0
+    while i < len(words):
+        for run, item_id in phrases:
+            n = len(run)
+            if folded[i:i + n] == run:
+                out.append((" ".join(words[i:i + n]), item_id))
+                i += n
+                break
+        else:
+            out.append((words[i], match_item(words[i], index)))
+            i += 1
+    return out

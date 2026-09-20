@@ -67,7 +67,7 @@ class Language(BaseModel):
     romanization: Romanization | None = None
     word_spacing: bool = False
     currency_symbol: str = ""  # kept in the language file; the game no longer spends money
-    phrasebook_voice: Voice = Field(default_factory=lambda: Voice())  # reads looked-up phrases
+    phrasebook_voice: Voice = Field(default_factory=lambda: Voice())  # unused; kept in the schema
     typing_note: str = ""
     items: dict[str, Item]
 
@@ -92,6 +92,9 @@ class Npc(BaseModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     names: dict[str, str] = Field(default_factory=dict)
+    # The same name in the language's romanization, for the narrator's prose. Without it a
+    # non-Latin run narrates the character's name in a script the player cannot yet read.
+    names_roman: dict[str, str] = Field(default_factory=dict)
     role: str = Field(min_length=1)
     character: str = Field(min_length=1)
     wants: str = ""  # GM-facing: what they are after tonight
@@ -102,6 +105,10 @@ class Npc(BaseModel):
 
     def display_name(self, locale: str) -> str:
         return self.names.get(locale) or self.name
+
+    def display_roman(self, locale: str) -> str:
+        """The readable name for prose: romanized when the script needs it, else the name."""
+        return self.names_roman.get(locale) or self.name
 
 
 class Art(BaseModel):

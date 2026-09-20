@@ -16,9 +16,19 @@ project with its own git repo: never import from the parent directory and never 
 - No hardcoding model output: no regex or keyword guards over model prose, no rewriting it. Fix
   the prompt (`core/prompt.py`), the tool declarations, or the snapshot. Invalid tool args come
   back to the model as `ERROR:` receipts inside the same loop.
-- No native-language translation during play. Glosses appear only on the end-of-scene summary.
-- Everything taught must be showable on screen. Highlights are drawn by the client from object
-  ids; art is generated offline (`scripts/generate_art.py`), never at runtime.
+- No native-language translation of a SENTENCE, ever. A per-word meaning is different and
+  is allowed during play: the dictionary (`PublicState.dictionary`, rendered by
+  `Dictionary.tsx` and `Heard.tsx`) shows what one word means, never what a line meant.
+  Working out which words to string together is the game, so nothing may hand that over.
+  There is deliberately no box anywhere that takes a phrase and returns one.
+- Everything taught must be showable on screen; art is generated offline
+  (`scripts/generate_art.py`), never at runtime.
+- The scene REACTS but is never regenerated. The base plate is the only painting. `say.expression`
+  (a small enum, baked once per plate into `cache/frames/` and read from disk after) and
+  `show_beat(region, change)` are typed commitments the model makes; `media/frames.py` paints ONE
+  derived rectangle at a time and the client lays that cutout over the untouched plate, so nothing
+  outside the box can drift. Text and audio never wait on a picture: the turn returns a promised
+  URL and the paint runs in the background. Every failure ends at the plate.
 - Language-agnostic: no target-language literals in `core/`, `server/`, `media/`, `web/src`. They
   live in `content/languages/<locale>.json` (`scripts/test_language_agnostic.py` enforces this).
 - Outcomes (first try / with help / with hint / missed) are stamped from the server's exchange

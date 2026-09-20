@@ -1,5 +1,6 @@
-// Scene entry. The opening turn is a real model call (a few seconds), so the wait is
-// spent reading where you are: the scene's intro over its cover.
+// Scene entry. The player reads where they are and steps in when they are ready.
+// The opening turn (a real model call, a few seconds) runs while they read, so the
+// pause costs no time: by the time Enter is pressed the character is usually waiting.
 
 import { useGame } from "../store";
 import { Picture } from "./Picture";
@@ -8,6 +9,8 @@ export function IntroCard() {
   const intro = useGame((s) => s.intro);
   const retry = useGame((s) => s.retryIntro);
   const newJourney = useGame((s) => s.newJourney);
+  const enterGame = useGame((s) => s.enterGame);
+  const entering = useGame((s) => s.entering);
   const scene = intro?.scene;
   return (
     <main data-testid="intro-card" className="fade-in absolute inset-0 overflow-hidden">
@@ -22,7 +25,18 @@ export function IntroCard() {
             </p>
           </div>
         )}
-        <div className="mt-10 h-9">
+        <div className="mt-10 flex min-h-9 items-center gap-4">
+          {!intro?.error && (
+            <button
+              type="button"
+              data-testid="enter-button"
+              onClick={enterGame}
+              disabled={entering}
+              className="h-10 rounded-[8px] border-0 bg-ink px-6 text-[14px] font-medium text-[#0e0f0f] transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {entering ? "Opening the door…" : "Enter"}
+            </button>
+          )}
           {intro?.error ? (
             <p data-testid="intro-error" role="alert" className="fade-in m-0 flex items-center gap-4 text-[14px] text-ink-2">
               {intro.error}
@@ -34,11 +48,13 @@ export function IntroCard() {
               </button>
             </p>
           ) : (
-            <div className="thinking" aria-label="Setting the scene">
-              <span />
-              <span />
-              <span />
-            </div>
+            entering && (
+              <div className="thinking" aria-label="Setting the scene">
+                <span />
+                <span />
+                <span />
+              </div>
+            )
           )}
         </div>
       </div>

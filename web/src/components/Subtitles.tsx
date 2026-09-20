@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import { useGame } from "../store";
 import { RubyLine } from "./RubyLine";
-import type { LearnerEntry, Line } from "../lib/types";
+import type { Language, LearnerEntry, Line } from "../lib/types";
 
 export function Subtitles({ compact = false }: { compact?: boolean }) {
   const transcript = useGame((s) => s.transcript);
@@ -51,7 +51,7 @@ export function Subtitles({ compact = false }: { compact?: boolean }) {
           data-testid={exchange.prose.narrator ? "narration" : undefined}
           data-role={exchange.prose.narrator ? "narration" : "direction"}
           className={`story slow-fade-in over-art m-0 max-w-[600px] text-balance ${
-            exchange.prose.narrator ? "pb-1 text-[17px] leading-[1.5] text-ink/90 sm:text-[19px]" : "text-[14px] italic leading-snug text-ink-3"
+            exchange.prose.narrator ? "pb-1 text-[17px] leading-[1.5] text-ink sm:text-[19px]" : "text-[14px] italic leading-snug text-ink-2"
           }`}
         >
           {exchange.prose.text}
@@ -88,7 +88,7 @@ export function Subtitles({ compact = false }: { compact?: boolean }) {
           data-testid="learner-line"
           className={`over-art m-0 flex items-center gap-1.5 self-center text-[14px] text-ink-2 ${waiting ? "rise-in" : "linger"}`}
         >
-          <Echo entry={mine} locale={language.locale} />
+          <Echo entry={mine} language={language} />
         </p>
       )}
 
@@ -103,14 +103,23 @@ export function Subtitles({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** "You say ...": your move, the way a game log would put it. */
-export function Echo({ entry, locale }: { entry: LearnerEntry; locale: string }) {
+/** "You say ...": your move, the way a game log would put it.
+ *  The learner reads romanization over everything the character says, so their own line
+ *  carries it too — otherwise a typed word echoes back with nothing to read. It is hidden
+ *  when it would only repeat the line (already-romanized typing, or a Latin script). */
+export function Echo({ entry, language }: { entry: LearnerEntry; language: Language }) {
+  const roman = entry.romanized?.trim();
+  const showRoman =
+    language.romanization_label != null &&
+    !!roman &&
+    roman.toLowerCase() !== entry.transcript.trim().toLowerCase();
   return (
     <>
       <span className="text-ink-3">You say</span>
-      <span lang={locale} className="target font-normal">
+      <span lang={language.locale} className="target font-normal">
         {entry.transcript}
       </span>
+      {showRoman && <span data-role="romanization" className="text-[13px] text-ink-3">{roman}</span>}
     </>
   );
 }

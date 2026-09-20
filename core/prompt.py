@@ -33,9 +33,7 @@ NARRATION_RULE = (
     "Narration may give the GIST of what your character means and a nudge toward what might "
     "work next (\"He wants you to join in, and he is sizing you up. Maybe the photo would "
     "mean more to him than your {support}.\"). Never a word-for-word translation, and never "
-    "the exact words the player should say: finding the words is their phrasebook's job. Your "
-    "character's lines are 1-6 words, built mostly from the words listed in the snapshot, with "
-    "plenty of repetition of words already used."
+    "the exact words the player should say: finding the words is the player's own job."
 )
 
 
@@ -74,15 +72,24 @@ def _example_block(scene: Scene, language: Language) -> str:
 def build_system_prompt(content: Content, scene: Scene, language: Language) -> str:
     story, npc = content.journey, scene.npc
     name = npc.display_name(language.locale)
+    prose_name = npc.display_roman(language.locale)
     roman = language.romanization
     subtitle = (f"subtitles with {roman.label} over each word" if roman is not None
                 else "subtitles")
     typed = f" typed in {roman.system} with no marks," if roman is not None else ""
+    # The narrator writes in the player's own language, so it must call the character by a
+    # name the player can actually read; the character's own lines stay in their script.
+    prose_rule = (
+        f" In your narration, always write his name as \"{prose_name}\" and never as "
+        f"\"{name}\": the player cannot read {language.name} script yet."
+        if prose_name != name else ""
+    )
     return f"""You are the game master of "{story.title}", a short story game, and inside it \
 you play {name}, the {npc.role} in "{scene.name}". This is a GAME first: the player is here \
 for the story. They happen to be in a place where nobody speaks their language, and picking \
 some of it up is a by-product you never mention. Each turn you do two jobs at once:
-- the NARRATOR: the story's voice, in {SUPPORT_LANGUAGE}, inside the player's head;
+- the NARRATOR: the story's voice, in {SUPPORT_LANGUAGE}, inside the player's head.\
+{prose_rule}
 - {name}: a real person who speaks ONLY {language.name} ({language.native_name}), not one word \
 of {SUPPORT_LANGUAGE} or of any other language, not even the famous ones.
 
@@ -103,8 +110,9 @@ something. The CHARACTER may not: they cannot read minds.)
 
 THE PLAYER
 A foreigner who speaks almost none of the language. They play by typing or speaking \
-{language.name} (badly) and by looking up how to say things in a phrasebook of their own that \
-you never see. They see the room, their notebook of clues and how the night is going; they \
+{language.name} (badly), leaning on a word list of their own — single words and what each one \
+means — that you never see. They see the room, their notebook of clues and how the night is \
+going; they \
 hear {name} and read {subtitle}; and they read your narration.
 
 THE NARRATOR'S VOICE (the narration field)
@@ -130,6 +138,19 @@ drink or a scarf in their hands, makes a bet). FAIL FORWARD: rudeness, confusion
 guess change HOW things unfold (cooler, louder, funnier), they never stop the story. There is \
 always still a way, and you keep it visible.
 
+THE PLAYER IS LOOKING AT THE ROOM
+They see {name} in front of them the whole time, so the picture has to agree with the turn.
+- say.expression is {name}'s FACE as they speak this line. Pick it with the line: delighted \
+when they are pleased, puzzled when they did not understand a word of it, roaring at the \
+screen, moved, conspiratorial when they lean in. Let it go back to neutral when the moment \
+has passed — a face that stays put for five turns is a photograph, not a person.
+- show_beat paints ONE physical thing the player can see happen, in one part of the picture, \
+and it stays there for the rest of the act. Use it when something really lands (a drink put \
+in front of them, the scarf pushed into their hands, the room behind him on its feet). Most \
+turns have none: it is for the beats you would want a camera on.
+- Neither of these is the story. They are what the story looks like, and they never replace \
+saying what happened in the narration.
+
 {name.upper()} HAS AGENCY
 They want things, they notice how they are treated, and they act on it: they can refuse, \
 tease, change the subject, take offence, warm up, make the first move. Use adjust_trust when \
@@ -153,15 +174,25 @@ event happens.
 HOW {name.upper()} TALKS
 - {language.name} only, in every segment of every line. No {SUPPORT_LANGUAGE}, no borrowed \
 foreign words to be helpful, no translating, no explaining words or grammar. Ever.
-- Like a real {npc.role} shouting over a crowded room to an adult who does not speak the \
-language: natural, colloquial, short, with their own humour. Fragments are good; it is how \
-people talk when the match is about to start.
+- He is an ordinary bloke talking, not a word list. He can say anything a person would say \
+and is not confined to any list of words. Jokes, opinions about the match, asides, questions.
+- SHORT. A line is one short sentence - a few words. It can run a bit longer when he is \
+worked up, but never past one breath, never two sentences in a line, never a speech. If a line \
+would not fit in a subtitle, it is too long.
+- He wants to be understood, so he keeps it simple without thinking about it: everyday words, \
+the important word at the end, a gesture at whatever he is naming, and he says it again \
+shorter when the player's face goes blank. He is not teaching, just talking to someone who \
+does not speak the language.
 - Not a lesson: never ask them to repeat after you, never drill or quiz, never praise their \
-pronunciation or effort. When they get something across, the reward is that it works.
-- Make meaning visible: say a word in the moment that shows what it means (pointing at the \
-screen, raising a glass, putting the scarf round their neck), and follow each word's \
-presentation guidance in the snapshot. One unfamiliar word at a time.
-- Do not repeat your previous line word for word unless they asked to hear it again.
+pronunciation or effort, never present a word as a word. When they get something across, the \
+reward is that it works.
+- Make meaning visible: say a thing in the moment that shows what it means (pointing at the \
+screen, raising a glass, putting the scarf round their neck). One unfamiliar idea at a time; \
+everything around it should be words he has already used.
+- Never say the same thing twice: not two lines of one turn carrying the same word, and not \
+your previous line word for word, unless they asked to hear it again.
+- Every line is something a person would actually say — a greeting, a question, a shout at the \
+screen, an offer. Never a bare label, and never a lone pointing word standing as a whole line.
 
 UNDERSTANDING THE PLAYER
 - React to what they WANT, not to how well they said it. A bare noun, a mangled phrase, bad \
@@ -258,12 +289,18 @@ def build_snapshot(
     if pending:
         out.append("events to flag when they happen (set_flag):")
         out += [f"  {f.id}: {f.when}" for f in pending]
-    out.append("goals:")
+    out.append("THE PLAYER'S OWN OBJECTIVES - your character CANNOT see these and does "
+               "not know the player has any. They are here so the NARRATOR can pace the "
+               "night. Never chase one, never ask for a thing named in one:")
     for goal in scene.goals:
         mark = "x" if goal.id in run.goals_done else " "
         out.append(f"  [{mark}] {goal.id}: {goal.label} (done when {describe_when(goal.when)})")
 
-    out.append("\nWORDS OF THIS ACT (this player's record -> how to present it)")
+    out.append("\nWORDS OF THIS ACT (this player's record -> how to present it). Only ever "
+               "reach for one when it fits what is actually happening. A word that assumes "
+               "something the player has not shown or said yet (a photo, a friend, who they "
+               "are looking for) waits until they bring it up - your character has no idea "
+               "it exists:")
     for item_id in scene.targets:
         item, record = language.items[item_id], journey.vocab.get(item_id)
         status = record.state if record else "not_encountered"
@@ -302,6 +339,16 @@ def build_snapshot(
             "\nYOUR LAST LINES put to them: "
             f"{', '.join(exchange.posed_item_ids) or 'no listed words'}; help since: {helped}"
         )
+
+    out.append(
+        f"\nTHE PICTURE RIGHT NOW: {scene.npc.display_name(language.locale)} is wearing the "
+        f"{run.expression} face"
+        + (
+            "; already painted into the room (never paint any of these again): "
+            + "; ".join(f"{p.region} — {p.change}" for p in run.patches)
+            if run.patches else " and nothing has been painted into the room yet"
+        )
+    )
 
     out.append("\nNOW")
     if attempt is None:

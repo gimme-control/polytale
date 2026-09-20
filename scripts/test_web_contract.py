@@ -74,9 +74,10 @@ def main() -> int:
     all_client = "\n".join(client.values())
     components = "\n".join(v for k, v in client.items() if k.startswith("components/"))
     play = "\n".join(read(f"components/{n}.tsx") for n in ("PlayView", "Scene", "Subtitles", "InputBar", "TopBar", "Hud", "Notebook", "HistoryDrawer", "RubyLine"))
-    notebook, phrasebook, start = read("components/Notebook.tsx"), read("components/Phrasebook.tsx"), read("components/StartScreen.tsx")
+    notebook, start = read("components/Notebook.tsx"), read("components/StartScreen.tsx")
     store, api, types = read("store.ts"), read("lib/api.ts"), read("lib/types.ts")
     ruby, subs, bar, top = read("components/RubyLine.tsx"), read("components/Subtitles.tsx"), read("components/InputBar.tsx"), read("components/TopBar.tsx")
+    heard, intro = read("components/Heard.tsx"), read("components/IntroCard.tsx")
     scene, summary, css = read("components/Scene.tsx"), read("components/Summary.tsx"), read("index.css")
     html = (WEB / "index.html").read_text(encoding="utf-8")
 
@@ -100,9 +101,14 @@ def main() -> int:
 
     # No translation during play; the gloss exists only on the summary.
     check("gloss is never touched by a play component", "gloss" not in play)
-    check("item gloss rendered only by the summary", [k for k, v in client.items() if k.startswith("components/") and ".gloss" in v] == ["components/Summary.tsx"])
-    check("per-word gloss exists only for the learner's OWN phrase", [k for k, v in client.items() if "phrase-gloss" in v] == ["components/Phrasebook.tsx"] and ".g" not in read("components/RubyLine.tsx"))
-    check("the phrasebook never sees a character line", all(x not in phrasebook for x in ("transcript", "e.line", "speakingLineId", "lineAudio")) and "phrase: (jid, token, text)" in api)
+    # Word meanings during play are a DICTIONARY, which is a deliberate product decision:
+    # a per-word gloss never says what a whole sentence meant, so the puzzle survives. Only
+    # these three surfaces may render one; a fourth would mean a meaning leaked somewhere new.
+    check("a word gloss is rendered only by the summary, the dictionary, the strip and the rail",
+          sorted(k for k, v in client.items() if k.startswith("components/") and ".gloss" in v)
+          == ["components/Dictionary.tsx", "components/Heard.tsx", "components/Summary.tsx",
+              "components/WordRail.tsx"],
+          sorted(k for k, v in client.items() if k.startswith("components/") and ".gloss" in v))
     check("no translation field on a line", "translation" not in types and "translation" not in all_client.replace("no translation", "").replace("No translation", "").replace("never a translation", "").replace("still no translation", "").replace("Still no translation", ""))
 
     # No word list during play: a count only.
@@ -152,17 +158,18 @@ def main() -> int:
 
     # Prices and haggling.
 
-    # Phrasebook.
-    check("phrasebook: field, result with ruby + per-word gloss, hear, use", all(x in phrasebook for x in ("How do I say", 'data-testid="phrase-input"', 'data-role="phrase-gloss"', "s.r", 'data-testid="phrase-play"', 'data-testid="phrase-use"')))
-    check("'Use it' fills the input and never sends", "draft: { text: p.text" in store and "setText(draft.text)" in bar and "sendText" not in phrasebook)
-    check("phrasebook states: loading, 422, your phrases", all(x in phrasebook + store for x in ('data-testid="phrase-loading"', "I can only help with what YOU want to say", "Your phrases", 'data-testid="phrase-saved"')))
-    check("phrasebook says it costs nothing", "costs no time" in phrasebook)
+    check("entry is gated on the player, not a timer",
+          'data-testid="enter-button"' in intro and "enterGame" in intro
+          and "enterGame()" in store and "INTRO_MIN_MS" not in store)
+    check("tapping a heard word appends into the input, never sends",
+          "sayWord" in store and "append: true" in store and "draft.append" in bar
+          and "sendText" not in heard and 'data-testid="heard-word"' in heard)
 
     # Ending.
-    check("ending: art, title, text, stats, then the words and phrases", all(x in summary for x in ('data-testid="ending"', "ending.art_url", "ending.title", "ending.text", "st.clues", 'data-testid="summary-phrases"')))
+    check("ending: art, title, text, stats, then the words", all(x in summary for x in ('data-testid="ending"', "ending.art_url", "ending.title", "ending.text", "st.clues")))
     check("play again", "Play again" in summary)
     check("act takes exactly one of attempt_id / text", all(s in types for s in ("{ attempt_id: string }", "{ text: string }")))
-    check("payloads typed", all(s in types for s in ("interface GameView", "interface Ending", "interface Phrase", "interface Clue", 'kind: "narration"', 'kind: "clue"', "narration?: string | null")))
+    check("payloads typed", all(s in types for s in ("interface GameView", "interface Ending", "interface Clue", 'kind: "narration"', 'kind: "clue"', "narration?: string | null")))
     check("history includes narration and clues", 'data-kind="narration"' in read("components/HistoryDrawer.tsx") and 'data-kind="clue"' in read("components/HistoryDrawer.tsx"))
     check("402 out of credits is shown as the reason", "err.status === 402 ? err.detail" in store)
     check("help is POSTed, never automatic", "/help" in api and "requestHelp" in top and "setInterval" not in top)
@@ -185,7 +192,7 @@ def main() -> int:
     check("summary: states, how it went, recall, tap to hear", all(s in summary for s in ("STATE_LABEL", "first try", "needed a repeat", "needed a hint", 'data-testid="recall-callout"', "Came back from", "api.itemAudio")))
 
     # API client mirrors SPEC.
-    for path in ("/api/health", "/api/catalog", "/api/journeys", "/scene", "/transcribe", "/act", "/help", "/phrase", "/phrases/", "/finish", "/reset", "/lines/", "/items/"):
+    for path in ("/api/health", "/api/catalog", "/api/journeys", "/scene", "/transcribe", "/act", "/help", "/finish", "/reset", "/lines/", "/items/"):
         check(f"api: {path}", path in api)
     check("X-Journey-Token header", '"X-Journey-Token"' in api and "X-Session-Token" not in api)
     check("audio gets ?token=", "token=${encodeURIComponent(token)}" in api)
@@ -260,7 +267,7 @@ def main() -> int:
     if dist.exists():
         print("web contract (built bundle)")
         bundle = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in dist.glob("*.js"))
-        for needle in ("X-Journey-Token", "preview-cancel", "words met", "Say something", "preservesPitch", "RIFF", "Came back from", "How do I say", "Play again"):
+        for needle in ("X-Journey-Token", "preview-cancel", "words met", "Say something", "preservesPitch", "RIFF", "Came back from", "Play again"):
             check(f"bundle contains {needle!r}", needle in bundle)
         check("bundle has no 'Relay'", "Relay" not in bundle)
     else:

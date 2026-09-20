@@ -7,7 +7,6 @@ import { api } from "../lib/api";
 import { linePlayer } from "../audio/linePlayer";
 import { useGame } from "../store";
 import { Picture } from "./Picture";
-import { PhraseLine } from "./Phrasebook";
 import type { Ending, ItemState, SummaryItem } from "../lib/types";
 
 const STATE_LABEL: Record<ItemState, string> = { mastered: "mastered", shaky: "shaky", not_encountered: "not met" };
@@ -33,8 +32,6 @@ export function Summary() {
   const language = useGame((s) => s.language);
   const scenes = useGame((s) => s.scenes);
   const ending = useGame((s) => s.ending);
-  const phrases = useGame((s) => s.summary?.phrasebook ?? s.phrasebook);
-  const playPhrase = useGame((s) => s.playPhrase);
   const continueJourney = useGame((s) => s.continueJourney);
   const newJourney = useGame((s) => s.newJourney);
   const [busy, setBusy] = useState(false);
@@ -76,21 +73,6 @@ export function Summary() {
           </section>
         )}
 
-        {phrases.length > 0 && (
-          <section data-testid="summary-phrases" className="mt-10">
-            <h2 className="m-0 text-[14px] font-normal text-ink-2">Your phrases</h2>
-            <ul className="m-0 mt-2 list-none border-t border-hair p-0">
-              {phrases.map((p) => (
-                <li key={p.phrase_id} className="border-b border-hair">
-                  <button type="button" data-testid="summary-phrase" onClick={() => playPhrase(p)} title="Hear it" className="flex w-full flex-wrap items-end justify-between gap-x-6 gap-y-1 border-0 bg-transparent px-0 py-3.5 text-left hover:bg-white/[0.03]">
-                    <PhraseLine phrase={p} language={language} size="sm" />
-                    <span className="story text-[14px] italic text-ink-3">“{p.source}”</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
 
         <ul data-testid="word-list" className="m-0 mt-10 list-none border-t border-hair p-0">
           {summary.items.map((item) => (

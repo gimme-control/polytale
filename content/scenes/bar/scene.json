@@ -1,9 +1,9 @@
 {
   "id": "bar",
-  "name": "The Corner Bar",
-  "tagline": "Match night. Everyone here knows Mei.",
-  "intro": "Final night, and the corner bar is packed shoulder to shoulder. Scarves and pennants on every wall, the pre-match build-up glowing on the TV, and a room full of supporters who have been here since the afternoon. One of them turns around, sees a stranger, and grins. You have Mei's photo and no words at all.",
-  "setting": "A small neighbourhood bar on World Cup final night, jammed with supporters. Team scarves and pennants cover the walls. A wall TV shows the pre-match build-up: the empty pitch, pundits, and every few minutes a replay of a famous goal that makes the whole room roar and bang the counter. The fans are in team colours, half of them with scarves over their shoulders, singing snatches of a chant whenever the screen shows their side. They are loud, warm, superstitious and completely absorbed in the match. The player is a stranger with a photo, obviously foreign, obviously lost, and the fans find this delightful rather than annoying. That is everything here: no shopping, no money, no menu, no errands. What happens, happens in talk: greeting people, being shown the screen, being taught a chant, being handed a spare scarf, cheering a goal, toasting, getting a word wrong and being cheered for trying anyway.",
+  "name": "The Away End",
+  "tagline": "Everyone in here knows your friend.",
+  "intro": "The away fans got here first. Their flags are over the windows, the TV is showing the build-up, and everyone in the room is singing something you don't know. You are the only local in here. A man at the end of the bar turns round, sees you, and waves you over. You have a photo of your friend and no way to ask about her.",
+  "setting": "A bar near the stadium on the night of the World Cup final, taken over by away supporters who flew in for it. Flags over the windows, scarves and team colours everywhere, a TV on the wall showing the build-up. Every few minutes it replays a famous goal and the room shouts at it. The player is the only local in the bar, which the fans find funny rather than awkward. Nobody here has any English. There is nothing to buy and nothing to fetch: what happens, happens in talk and gesture - being greeted, being shown the screen, being taught a line of the song, being handed a spare scarf, drinking with them, getting a word wrong and being cheered for trying.",
   "art": {
     "background": "art/bg.webp",
     "cover": "art/cover.webp"
@@ -17,9 +17,15 @@
       "es-ES": "Tavo",
       "ko-KR": "준호"
     },
-    "role": "football fan",
-    "character": "Thirties, in the team shirt he has worn for every big match for nine years, scarf already round his neck four hours before kickoff. The loudest and friendliest of the group at the end of the bar. Superstitious, sentimental about the game, quick to laugh, quicker to put an arm round a stranger's shoulder. He has watched every final of his life in this room. He speaks nothing but the local language and it does not slow him down for a second: he points at the screen, mimes, repeats himself louder, and treats every word the player manages as a small victory worth toasting. He knows Mei the way regulars know each other, and he is protective of her in a cheerful, nosy way.",
-  "voice": {
+    "names_roman": {
+      "zh-CN": "Ah Hai",
+      "ja-JP": "Haru",
+      "es-ES": "Tavo",
+      "ko-KR": "Junho"
+    },
+    "role": "travelling away fan",
+    "character": "Thirties, in the same team shirt he has worn for every big match for years, scarf already on hours before kickoff. The loudest of the group by the TV. He saved up a long time to follow the team out here and is having a very good night. Quick to laugh, quick to put an arm round a stranger. He has no English at all and it does not slow him down: he points, mimes, says it again louder, and treats anything the player manages as worth a drink. He knows the woman in the photo the way regulars know each other.",
+    "voice": {
       "gemini_voice": "Puck",
       "elevenlabs_voice_id": "",
       "style": "A man in his thirties in a loud bar on the night of a big match: warm, boisterous, quick, often half-laughing, pitched to carry over a crowd. Natural conversational speed, not a language lesson."
@@ -28,33 +34,32 @@
       "x": 0.5,
       "y": 0.262
     },
-    "wants": "His team to win, and everyone in the room to want it as badly as he does. He is privately certain that the result depends on doing things exactly right: the same shirt, the same chant at the same moment, nobody jinxing it. A stranger who joins in has a friend for life: cheering the replayed goal, learning the chant, wearing a spare scarf, toasting the team. He loves teaching the chant most of all. He dislikes nothing much, except being ignored while the screen is showing his side.",
-    "secrets": "He knows Mei well: she watches every big match in this bar and has done for two years. Tonight she sat with them from six, watching the door for a friend who never showed, and around eight she gave up and went with the crowd to the fan zone to hold their spots. She is at gate 2, under the big screen, in her team scarf. He will not send a stranger after one of their own on the strength of a photo alone, but the bar is not a suspicious place tonight, only a busy one: once the stranger shows he is here for the football, he will tell him exactly where she is, draw the route on the counter with a finger, and send half the bar out of the door with him.",
+    "wants": "His team to win, and everyone in the room to want it as much as he does. He half believes the result depends on getting the details right: the same shirt, the same song at the same moment, nobody jinxing it. A local who joins in is a friend for the night - cheering the replay, learning the song, wearing a spare scarf, drinking with them. He likes teaching the song best. The only thing that annoys him is being ignored while his side is on the screen.",
+    "secrets": "He knows the woman in the photo. She travelled over with their support and was in this bar tonight, sitting with them from six, watching the door for a friend who never turned up. She gave up and went ahead with the crowd to hold their spots. She is in the fan zone by the stadium, at gate 2, under the big screen, in an away scarf. He will not send a stranger after her on the strength of a photo, but he is not suspicious, just busy: once the player shows he is here for the football, he says where she is, draws the way on the bar with his finger, and sends half the room out of the door with him.",
     "trust": 0
   },
   "targets": [
     "hello",
-    "thanks",
+    "go_team",
     "friend",
     "where",
-    "seen",
-    "cheers",
+    "photo",
     "goal",
-    "go_team",
+    "cheers",
     "fan_zone",
-    "awesome"
+    "gate"
   ],
   "goals": [
     {
       "id": "ask",
-      "label": "Show someone Mei's photo",
+      "label": "Show someone your friend's photo",
       "when": {
         "flag": "photo_shown"
       }
     },
     {
       "id": "trail",
-      "label": "Find out where Mei is",
+      "label": "Find out where your friend is",
       "when": {
         "clue": "gate"
       }
@@ -64,23 +69,24 @@
     "yes",
     "no",
     "good",
+    "thanks",
     "sorry",
     "mate",
     "she",
+    "seen",
     "left",
-    "photo",
     "match",
     "team",
     "tonight",
-    "gate",
     "here",
     "scarf",
-    "win"
+    "win",
+    "awesome"
   ],
   "flags": [
     {
       "id": "photo_shown",
-      "when": "the player has shown or handed the fans Mei's photo"
+      "when": "the player has shown or handed the fans the photo of their friend"
     },
     {
       "id": "cheered",
@@ -88,19 +94,19 @@
     },
     {
       "id": "chanted",
-      "when": "the player has tried the chant the fans are teaching, however badly"
+      "when": "the player has tried a line of the song the fans are teaching, however badly"
     },
     {
       "id": "scarf_worn",
-      "when": "the player has taken and put on the spare scarf the fans offer"
+      "when": "the player has taken and put on the spare away scarf the fans offer"
     }
   ],
   "clues": [
     {
       "id": "regular",
       "title": "They know her",
-      "text": "The fans recognised Mei's photo instantly. She watches every big match in this bar. Half the room started talking at once.",
-      "gm_note": "Comes out the moment they see the photo: shouting, pointing, 'our Mei!'. They confirm they know her; not yet where she is.",
+      "text": "They knew the photo straight away. She came over with their support and she was in this bar tonight. Half the room started talking at once.",
+      "gm_note": "Comes out the moment they see the photo: shouting, pointing, 'one of ours!'. They confirm they know her; not yet where she is.",
       "key_items": [],
       "reveal_when": [
         {
@@ -113,7 +119,7 @@
     {
       "id": "waited",
       "title": "She waited for you",
-      "text": "Mei sat with them from six, watching the door. When the crowd left for the fan zone she went too, to hold your spots.",
+      "text": "She sat with them from six, watching the door. When the crowd left for the fan zone she went with them to hold your spots.",
       "gm_note": "He nods at the empty stool, then at the door, then at the clock over the bar.",
       "key_items": [],
       "reveal_when": [
@@ -128,7 +134,7 @@
     {
       "id": "gate",
       "title": "Gate 2",
-      "text": "Mei is in the fan zone at gate 2, under the big screen, in her team scarf. Five minutes on foot, and half this bar is going that way.",
+      "text": "She is in the fan zone by the stadium, at gate 2, under the big screen. Five minutes on foot, and half this bar is walking that way.",
       "gm_note": "He says exactly where she is, draws the route on the counter with a finger, and sends the player out of the door with the crowd. This ends the night.",
       "key_items": [
         "fan_zone"

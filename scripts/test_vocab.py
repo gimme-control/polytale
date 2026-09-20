@@ -21,11 +21,9 @@ def journey_in(started: bool = True) -> Journey:
     return journey
 
 
-def pose(journey: Journey, posed: list[str], help_level: int = 0,
-         phrasebook: list[str] | None = None) -> None:
+def pose(journey: Journey, posed: list[str], help_level: int = 0) -> None:
     assert journey.scene is not None
     journey.scene.exchange = Exchange(posed_item_ids=posed, help_level=help_level,
-                                      phrasebook_item_ids=list(phrasebook or []),
                                       line_ids=["s0-t0-l0"],
                                       intent_hint="Wants you to join in with the chant")
 
@@ -52,25 +50,19 @@ def test_appearances() -> None:
 
 
 def test_outcomes() -> None:
-    for label, help_level, looked_up, understood, outcome, state in (
-        ("understood, no help", 0, False, True, "first_try", "mastered"),
-        ("understood, looked it up first", 0, True, True, "with_help", "shaky"),
-        ("understood, help level 1", 1, False, True, "with_help", "shaky"),
-        ("understood, help level 2", 2, False, True, "with_hint", "shaky"),
-        ("hint beats a lookup", 2, True, True, "with_hint", "shaky"),
-        ("missed", 0, False, False, "missed", "shaky"),
-        ("missed even with help", 2, False, False, "missed", "shaky"),
+    for label, help_level, understood, outcome, state in (
+        ("understood, no help", 0, True, "first_try", "mastered"),
+        ("understood, help level 1", 1, True, "with_help", "shaky"),
+        ("understood, help level 2", 2, True, "with_hint", "shaky"),
+        ("missed", 0, False, "missed", "shaky"),
+        ("missed even with help", 2, False, "missed", "shaky"),
     ):
         j = journey_in()
-        pose(j, [A], help_level, [A] if looked_up else [])
+        pose(j, [A], help_level)
         result, is_new = record(j, A, understood)
         T.check(f"{label} -> {outcome}/{state}",
                 is_new and result.outcome == outcome and j.vocab[A].state == state,
                 (result, j.vocab[A].state))
-    j = journey_in()
-    pose(j, [B], phrasebook=[B])
-    result, _ = record(j, A)
-    T.check("another item's lookup does not count as help", result.outcome == "first_try")
 
 
 def test_state_transitions() -> None:

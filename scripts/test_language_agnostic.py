@@ -10,7 +10,6 @@ from core.content import Language, Romanization, load_content, validate_content
 from core.prompt import build_snapshot, build_system_prompt
 from core.tools import declaration_schemas
 from core.views import public_state
-from core import phrasebook
 from scripts.test_dm_offline import found_mei
 from scripts.testkit import ROOT, Checker
 
@@ -84,10 +83,6 @@ def test_prompt_is_built_from_the_lexicon() -> None:
     T.check("tool declarations name the active language, never another",
             ja.name in str(declaration_schemas(bar, ja))
             and zh.name not in str(declaration_schemas(bar, ja)))
-    pb = phrasebook.build_prompt(ja, bar, CONTENT)
-    T.check("the phrasebook prompt is built from the active lexicon too",
-            ja.name in pb and ja.items[first].text in pb and zh.name not in pb
-            and zh.items[first].text not in pb)
 
 
 def test_other_language_offline_loop() -> None:

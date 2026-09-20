@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 
 from core import game, vocab
 from core.content import Anchor, Content, Language, Scene
-from core.state import ClueView, Entry, Journey, Line, NpcEntry, Phrase, Summary
+from core.frames import FrameView
+from core.state import ClueView, Entry, Journey, Line, NpcEntry, Summary
 from core.summary import build_summary
 
 SceneStatus = Literal["done", "current", "next", "locked"]
@@ -92,6 +93,94 @@ class StoryView(BaseModel):
     art_url: str | None = None  # title art
 
 
+class HeardWord(BaseModel):
+    """A word the character actually said, as he said it.
+
+    Not the same thing as the scene's vocabulary: he speaks like a person, so he says words
+    that are not on any list. Those still belong here — "words you have heard" has to mean
+    exactly that — with an empty gloss when the lexicon does not know them.
+    """
+
+    text: str
+    roman: str
+    gloss: str
+
+
+def heard_words(journey: Journey, content: Content) -> list[HeardWord]:
+    """Every word he has spoken this scene, in order, first time only.
+
+    A listed phrase he said whole ("esta noche") is ONE entry with that phrase's meaning, not
+    two words wearing the wrong glosses. A word the lexicon does not know still appears, with
+    no meaning: he speaks freely, and the player heard it either way.
+    """
+    run = journey.scene
+    if run is None:
+        return []
+    language = content.language(journey.language)
+    joiner = " " if language.word_spacing else ""
+    out: list[HeardWord] = []
+    seen: set[str] = set()
+    for entry in run.transcript:
+        if not isinstance(entry, NpcEntry):
+            continue
+        words = [s for s in entry.line.segments if any(ch.isalpha() for ch in s.t)]
+        i = 0
+        for said, item_id in vocab.scan_items([s.t for s in words], language):
+            span = len(said.split()) if language.word_spacing else 1
+            if item_id is not None and not language.word_spacing:
+                # An unspaced script writes a phrase as one segment anyway.
+                span = 1
+            group = words[i:i + span] or words[i:i + 1]
+            i += max(span, 1)
+            text = joiner.join(g.t for g in group) or said
+            if text in seen:
+                continue
+            seen.add(text)
+            item = language.items.get(item_id) if item_id else None
+            out.append(HeardWord(text=text,
+                                 roman=" ".join(g.r for g in group if g.r)
+                                 or (item.roman if item else ""),
+                                 gloss=item.gloss if item else ""))
+    return out
+
+
+class WordEntry(BaseModel):
+    """One word of this scene's vocabulary, with what THAT WORD means.
+
+    A per-word meaning is a dictionary, not a translation: nothing here says what a whole
+    SENTENCE meant, so working out what he is asking for, and which words to put together,
+    is still the player's job. ``heard`` marks the ones he has already said out loud.
+    """
+
+    item_id: str
+    text: str
+    roman: str
+    gloss: str
+    heard: bool = False
+
+
+def dictionary(journey: Journey, content: Content) -> list[WordEntry]:
+    """Every word of the scene: the ones he has said first, in the order he said them."""
+    run = journey.scene
+    if run is None:
+        return []
+    language = content.language(journey.language)
+    scene = content.scene(run.scene_id)
+    spoken: list[str] = []
+    for entry in run.transcript:
+        if isinstance(entry, NpcEntry):
+            spoken += [i for i in entry.line.item_ids if i not in spoken]
+    order = [i for i in spoken if i in scene.item_ids]
+    order += [i for i in scene.item_ids if i not in order]
+    out: list[WordEntry] = []
+    for item_id in order:
+        item = language.items.get(item_id)
+        if item is not None:
+            out.append(WordEntry(item_id=item_id, text=item.text, roman=item.roman,
+                                 gloss=item.gloss, heard=item_id in spoken))
+    return out
+
+
 class PublicState(BaseModel):
     journey_id: str
     language: LanguageView
@@ -106,7 +195,12 @@ class PublicState(BaseModel):
     story: StoryView
     game: GameView
     ending: Ending | None
-    phrasebook: list[Phrase]
+    #: the scene's vocabulary, word meanings only, heard-first
+    dictionary: list[WordEntry] = []
+    #: the words he has actually said, as he said them
+    heard: list[HeardWord] = []
+    #: the scene as it stands (see TurnResult.frame); the server fills it in
+    frame: FrameView | None = None
 
 
 def story_view(content: Content) -> StoryView:
@@ -224,7 +318,8 @@ def public_state(journey: Journey, content: Content) -> PublicState:
         story=story_view(content),
         game=game_view(journey, content),
         ending=ending_view(journey, content),
-        phrasebook=list(journey.game.phrasebook),
+        dictionary=dictionary(journey, content),
+        heard=heard_words(journey, content),
     )
 
 

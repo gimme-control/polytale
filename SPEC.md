@@ -24,14 +24,12 @@ knows Mei but has reasons to be cagey) and the night market (the vendor has some
    and sizing you up."), and the character keeps lines to 1–6 words built mostly from scene words;
    `immersion` — narration is physical/sensory only, never the gist. Neither mode ever prints a
    word-for-word translation of a character line.
-4. **Phrasebook ("How do I say…?").** The learner types what THEY want to say in English and gets
-   the simplest natural way to say it in the target language: segments with romanization AND a
-   per-word gloss (it is their own sentence, so glossing it is fine), audio, and "Use it" (fills
-   the input; they still send or say it). It never translates character lines: the endpoint takes
-   only learner-authored support-language text, and the prompt refuses target-language input.
-   Lexicon items that appear in a looked-up phrase count as assisted for that exchange
-   (`with_help`), stamped by code. Looked-up phrases are kept per journey as the learner's own
-   phrasebook and shown on the summary.
+4. **Dictionary.** Every word of the scene, searchable by meaning, by the word or by its
+   romanization (diacritic- and space-insensitive, because that is how learners type).
+   Word meanings only: there is NO box that takes a phrase and returns one, because
+   choosing and combining words is the game. Words the character has already spoken are
+   marked `heard`. Served as `PublicState.dictionary` / `TurnResult.dictionary`
+   (`WordEntry {item_id, text, roman, gloss, heard}`); tapping one fills the input.
 5. **Real choices, real resources.** A wallet (integer cash; things cost money; you cannot afford
    everything), a clock (each learner turn costs minutes; the last train leaves), character trust
    (what they will tell you depends on it), clues (a notebook of what you have learned), verbs on
@@ -60,8 +58,7 @@ Scene additions: `npc.wants`, `npc.secrets` (GM-facing), `npc.trust` (start, −
 Money is numeric (`game.wallet`); the money object stays in `inventory` as the thing you use to pay.
 
 **State.** `Journey.game = { wallet, minutes_used, difficulty, trust: {scene_id: int},
-clues: [clue_id], flags: [str], prices: {object_id: int}, spent: int, phrasebook: [Phrase],
-ending_id }`. `Exchange.phrasebook_item_ids`.
+clues: [clue_id], flags: [str], ending_id }`.
 
 **Tools** (one response per turn, `say` terminal):
 `move_object(object_id, to_zone)` · `pay(amount, for_object_ids[])` (≤ wallet; amount must equal the
@@ -87,8 +84,7 @@ Clue       { id, title, text }
 SceneView.objects[] += { actions: [{ id, label }] }     // labels in English, e.g. "Show", "Drink"
 Ending     { id, title, text, art_url, stats: { minutes_left, wallet, clues, words_mastered, words_shaky } }
 Phrase     { phrase_id, source, segments: [{ t, r, g }], text, romanization, audio_url, item_ids }
-PublicState += { story: { title, tagline, premise }, game: GameView, ending: Ending|null, phrasebook: Phrase[] }
-Summary    += { phrasebook: Phrase[] }
+PublicState += { story: { title, tagline, premise }, game: GameView, ending: Ending|null, dictionary: WordEntry[] }
 ```
 **REST deltas.** `POST /api/journeys/{jid}/phrase {text}` → Phrase (fast model, ≤ 2 s; 422 when
 the text is not support-language or is empty; never consumes a turn or clock time) ·
@@ -98,7 +94,7 @@ the text is not support-language or is empty; never consumes a turn or clock tim
 **Web.** Same restrained cinematic language as v2, now a game: narration rendered as prose above
 the subtitles (it is the story's voice — give it presence); HUD with clock (it should feel like
 pressure as it runs down), cash, a notebook of clues, inventory tray; object verb menu on click;
-right-side Phrasebook panel (collapsible; bottom sheet on phones): "How do I say…" field, result
+Dictionary drawer: a search field over the scene's words, each with that one word's meaning
 with ruby + per-word gloss + play + "Use it", and the journey's looked-up phrases below; difficulty
 toggle in the menu; ending screen (art, title, text, stats) before the word summary.
 
@@ -116,7 +112,7 @@ toggle in the menu; ending screen (art, title, text, stats) before the word summ
   `paid_at_least` counts cash spent in THIS scene. `key_items` are the giveaway words: `say` is
   refused while a line carries one and the clue is not revealed (LOCKED → "deflect"; available →
   "call reveal_clue in this response"). Flags are journey-global (they carry across acts).
-- Language: `phrasebook_voice {gemini_voice, elevenlabs_voice_id, style}`.
+- Language: `phrasebook_voice {…}` remains in the schema but nothing reads it.
 - New validator codes: `unknown_action`, `price_floor_invalid`, `unknown_clue`, `unknown_flag`,
   `ending_no_fallback`, `clock_empty`.
 
@@ -129,7 +125,7 @@ scene's character.
 (clue / flag / zones) and at every commit. `pay(amount, for_object_ids[], tip?)`; `set_price` is
 declared only in scenes with a `price_floor`; `adjust_trust` a second time in one turn is an OK
 no-op; `pay` / `adjust_trust` / `record_item` are refused in the opening. The clock ticks
-`minutes_per_turn` per player turn at commit (the opening and phrasebook lookups are free).
+There is no clock: nothing costs time.
 The snapshot tells the GM when the clock runs out with the turn in play, lists each clue as KNOWN
 / CAN COME OUT NOW / LOCKED (with what each way still lacks), and lists what was served but not
 paid for.
@@ -139,7 +135,7 @@ player's OWN input: the item's text, or its romanization however typed (no marks
 or the recognizer's romanization must actually be in the attempt; a support-language word that
 merely means it records nothing. `produced=false` (understanding) records only for a word that was
 in the character's last lines. Both cases are OK receipts, never ERRORs. A word looked up in the
-phrasebook during the exchange stamps `with_help`.
+help level 1 during the exchange stamps `with_help`.
 
 **`say` guards (structured data only, never prose).** A highlighted object's own word must be
 in that line; an object that is `gone` cannot be lit; an object still in the player's `inventory`
@@ -148,6 +144,29 @@ with a `pay` verb are exempt); a clue's `key_items` cannot be spoken before the 
 
 **Story art.** `journey.json.art` (relative to `content/`) is served at `GET /api/story/art`;
 `StoryView.art_url` carries that URL (null when no art is authored).
+
+### The living scene (`core/frames.py`, `media/frames.py`, `server/frames.py`)
+
+The base plate is the only painting and is never regenerated. What changes are small patches,
+each confined to a rectangle derived in code from `npc.anchor`; the client lays them over the
+untouched plate, so continuity is structural (the model is never shown the rest of the frame).
+
+- **Tools.** `say` gains a required `expression` enum — `neutral` (the plate itself),
+  `delighted`, `laughing`, `puzzled`, `moved`, `roaring`, `conspiratorial` — chosen with the
+  line. Omitted commits as `neutral`; an unknown value is an `ERROR` receipt. `show_beat(region,
+  change)` paints ONE physical beat, `region ∈ {counter, hands, room_left, room_right}` (never
+  the face), `change` ≤ 22 words, once per turn, ≤ 8 per act; beats persist on `SceneRun.patches`.
+- **Baking.** An expression is baked ONCE per plate and cached to
+  `cache/frames/<scene_id>/<layer id>.webp`; a beat is baked over the frame as it stands, so its
+  id folds in the beats before it. Layer ids hash the plate's bytes, so new art invalidates
+  cleanly. `media.frames.bake_plan(..., edit=)` takes its single model call as an argument.
+- **Payloads.** `TurnResult += { frame: Frame|null }`, `PublicState += { frame: Frame|null }`;
+  `Frame { key, expression, layers: [{ id, url, left, top, width, height }] }` (fractions of the
+  plate). `frame` is null when nothing is painted. `GET …/frame/{layer_id}` serves the cutout,
+  joining the paint the turn already started; anything unknown, failed, timed out or switched
+  off is a 1×1 transparent PNG, i.e. the plate exactly as it is.
+- **Guards.** `POLYTALE_FRAMES` (default on), `POLYTALE_FRAME_MODEL` (else `GEMINI_IMAGE_MODEL`,
+  a flash image model), `POLYTALE_FRAME_TIMEOUT_S` (default 30).
 
 **Flow.** An act completes when all its goals are done OR the clock hits zero. The ending resolves
 (first match) when the LAST act completes or the clock runs out in any act; `TurnResult.ending` is
@@ -161,8 +180,6 @@ story has ended. `finish` on the last act also resolves the ending.
 - `POST …/phrase {text}` → `Phrase`; 422 `{detail: {code: "empty"|"target_language"|
   "not_a_phrase", message}}`; 502 when every model failed; works before, during and after play;
   the model call runs outside the journey lock. `Phrase.item_ids` are found by code; they mark
-  `exchange.phrasebook_item_ids` so the next result for those words stamps `with_help`.
-- `GET …/phrases/{phrase_id}/audio` (language `phrasebook_voice`) · `POST …/difficulty
   {difficulty}` → PublicState (422 on an unknown value).
 - `POST …/scene` → 409 once the story has ended.
 

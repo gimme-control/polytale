@@ -20,13 +20,13 @@ ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 import media
-from core import dm, phrasebook
-from core.content import CONTENT_ROOT, resolve_art_path
-from core.state import Attempt, Journey, Line, Phrase
+from core import dm
+from core.content import CONTENT_ROOT, Scene, resolve_art_path
+from core.state import Attempt, Journey, Line
 from core.views import (
     art_url,
     find_line,
@@ -36,7 +36,9 @@ from core.views import (
     story_view,
 )
 from core.vocab import request_help
+from media import frames as painter
 from media import stt, tts
+from server.frames import FrameService
 from server.sessions import BadToken, JourneyNotFound, JourneyStore, content
 
 log = logging.getLogger("polytale.server")
@@ -55,7 +57,6 @@ class Deps:
 
     run_turn: Callable[..., tuple[Journey, dm.TurnResult]] = dm.run_turn
     run_opening: Callable[..., tuple[Journey, dm.TurnResult]] = dm.run_opening
-    translate: Callable[..., Phrase] = phrasebook.translate
     transcribe: Callable[..., stt.TranscriptionResult] = stt.transcribe
     synthesize: Callable[..., tts.AudioClip] = tts.synthesize
 
@@ -63,6 +64,7 @@ class Deps:
 app = FastAPI(title="Polytale")
 app.state.store = JourneyStore()
 app.state.deps = Deps()
+app.state.frames = FrameService()
 
 
 def _store(request: Request) -> JourneyStore:
@@ -71,6 +73,23 @@ def _store(request: Request) -> JourneyStore:
 
 def _deps(request: Request) -> Deps:
     return request.app.state.deps
+
+
+def _frames(request: Request) -> FrameService:
+    return request.app.state.frames
+
+
+def _scene_of(journey: Journey) -> Scene | None:
+    return content().scene(journey.scene.scene_id) if journey.scene is not None else None
+
+
+def _state(request: Request, journey: Journey) -> dict[str, Any]:
+    """PublicState with the scene's current frame attached (no painting is started)."""
+    state = public_state(journey, content())
+    scene = _scene_of(journey)
+    if scene is not None:
+        state.frame = _frames(request).view(journey, scene)
+    return _dump(state)
 
 
 def _journey(request: Request, jid: str, token: str | None) -> Journey:
@@ -96,15 +115,13 @@ async def _run_model(request: Request, fn: Callable[..., Any], *args: Any) -> An
     """Run a DM call off the event loop; map its failures to HTTP errors (state untouched)."""
     try:
         return await asyncio.wait_for(asyncio.to_thread(fn, *args), timeout=TURN_TIMEOUT_S)
-    except phrasebook.PhraseRefused as exc:
-        raise HTTPException(422, {"code": exc.code, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
     except dm.OutOfCredits as exc:
         log.error("model provider out of credits: %s", exc)
         raise HTTPException(402, "The AI account behind this demo is out of credits. "
                                  "Top up the Gemini API key, then try again.") from None
-    except (dm.TurnError, phrasebook.PhraseError, TimeoutError) as exc:
+    except (dm.TurnError, TimeoutError) as exc:
         log.warning("turn failed: %s", exc)
         raise HTTPException(502, "that didn't go through — send it again") from None
 
@@ -121,6 +138,21 @@ def _prewarm(request: Request, journey: Journey, lines: list[Line]) -> None:
 
     for line in lines:
         asyncio.get_running_loop().create_task(one(line.text))
+
+
+def _promise_frame(request: Request, journey: Journey, result: dm.TurnResult) -> None:
+    """Start painting the scene and tell the client where to collect it.
+
+    The turn is already decided: this only ever adds a URL to the payload. Nothing here
+    blocks, and nothing here can fail the turn.
+    """
+    scene = _scene_of(journey)
+    if scene is None:
+        return
+    try:
+        result.frame = _frames(request).start(journey, scene)
+    except Exception as exc:  # noqa: BLE001 — the scene simply does not react this turn
+        log.warning("frame not started: %s", exc)
 
 
 # ------------------------------------------------------------------------- catalog
@@ -187,10 +219,6 @@ class ActBody(BaseModel):
     text: str | None = None
 
 
-class PhraseBody(BaseModel):
-    text: str
-
-
 @app.post("/api/journeys")
 def create_journey(request: Request, body: CreateBody) -> dict[str, Any]:
     try:
@@ -204,7 +232,7 @@ def create_journey(request: Request, body: CreateBody) -> dict[str, Any]:
 @app.get("/api/journeys/{jid}")
 def get_journey(request: Request, jid: str,
                 x_journey_token: str | None = Header(None)) -> dict[str, Any]:
-    return _dump(public_state(_journey(request, jid, x_journey_token), content()))
+    return _state(request, _journey(request, jid, x_journey_token))
 
 
 @app.post("/api/journeys/{jid}/scene")
@@ -229,6 +257,7 @@ async def enter_scene(request: Request, jid: str, body: SceneBody,
                                                entered, content())
         _store(request).save(new_journey)
     _prewarm(request, new_journey, result.lines)
+    _promise_frame(request, new_journey, result)
     return _dump(result)
 
 
@@ -320,6 +349,7 @@ async def act(request: Request, jid: str, body: ActBody,
                                                journey, content(), attempt)
         _store(request).save(new_journey)
     _prewarm(request, new_journey, result.lines)
+    _promise_frame(request, new_journey, result)
     return _dump(result)
 
 
@@ -336,32 +366,6 @@ async def help_(request: Request, jid: str,
     return {"help": _dump(given), "progress": _dump(progress_view(journey, content()))}
 
 
-@app.post("/api/journeys/{jid}/phrase")
-async def phrase(request: Request, jid: str, body: PhraseBody,
-                 x_journey_token: str | None = Header(None)) -> dict[str, Any]:
-    """"How do I say…?" for the player's OWN words. Costs no turn.
-
-    The model call runs outside the journey lock (it only reads), so a lookup never delays a
-    turn; the ledger write takes the lock.
-    """
-    journey = _journey(request, jid, x_journey_token)
-    found = await _run_model(request, _deps(request).translate, journey, content(), body.text)
-    async with _store(request).lock(jid):
-        fresh = _journey(request, jid, x_journey_token)
-        phrasebook.remember(fresh, found)
-        _store(request).save(fresh)
-    asyncio.get_running_loop().create_task(_warm_phrase(request, fresh, found))
-    return _dump(found)
-
-
-async def _warm_phrase(request: Request, journey: Journey, found: Phrase) -> None:
-    try:
-        await asyncio.to_thread(_deps(request).synthesize, found.text, language=journey.language,
-                                voice=content().language(journey.language).phrasebook_voice.model_dump())
-    except Exception as exc:  # the audio GET retries and reports
-        log.warning("phrase prewarm failed: %s", exc)
-
-
 @app.post("/api/journeys/{jid}/finish")
 async def finish(request: Request, jid: str,
                  x_journey_token: str | None = Header(None)) -> dict[str, Any]:
@@ -375,12 +379,10 @@ async def finish(request: Request, jid: str,
     return _dump(summary)
 
 
-async def _audio(request: Request, journey: Journey, text: str, what: str,
-                 voice: dict[str, Any] | None = None) -> FileResponse:
+async def _audio(request: Request, journey: Journey, text: str, what: str) -> FileResponse:
     try:
         clip = await asyncio.to_thread(_deps(request).synthesize, text,
-                                       language=journey.language,
-                                       voice=voice if voice is not None else _voice(journey))
+                                       language=journey.language, voice=_voice(journey))
     except media.SpeechError as exc:
         log.warning("tts failed for %s: %s", what, exc)
         raise HTTPException(503, "audio unavailable") from None
@@ -399,6 +401,32 @@ async def line_audio(request: Request, jid: str, line_id: str,
     return await _audio(request, journey, line.text, line_id)
 
 
+@app.get("/api/journeys/{jid}/frame/{layer_id}")
+async def frame_layer(request: Request, jid: str, layer_id: str,
+                      token: str | None = Query(None),
+                      x_journey_token: str | None = Header(None)) -> Response:
+    """One patch of the living scene, as a cutout the client lays over the base plate.
+
+    It waits on the paint the turn already started. Anything that goes wrong — switched off,
+    timed out, refused, a stale URL — comes back as a transparent pixel, which draws the
+    plate exactly as it is. The player never sees a broken or blank scene.
+    """
+    journey = _journey(request, jid, token or x_journey_token)
+    scene = _scene_of(journey)
+    path = None
+    if scene is not None:
+        try:
+            path = await _frames(request).layer_file(journey, scene, layer_id)
+        except Exception as exc:  # noqa: BLE001 — the plate is always a safe answer
+            log.warning("frame layer %s failed: %s", layer_id, exc)
+    if path is None:
+        return Response(painter.TRANSPARENT_PNG, media_type="image/png",
+                        headers={"Cache-Control": "no-store"})
+    # The id is a hash of the plate and the change, so this file can never mean anything else.
+    return FileResponse(path, media_type="image/webp",
+                        headers={"Cache-Control": "private, max-age=86400, immutable"})
+
+
 @app.get("/api/journeys/{jid}/items/{item_id}/audio")
 async def item_audio(request: Request, jid: str, item_id: str,
                      token: str | None = Query(None),
@@ -411,19 +439,6 @@ async def item_audio(request: Request, jid: str, item_id: str,
         raise HTTPException(404, "item not in this scene")
     return await _audio(request, journey, content().language(journey.language).items[item_id].text,
                         item_id)
-
-
-@app.get("/api/journeys/{jid}/phrases/{phrase_id}/audio")
-async def phrase_audio(request: Request, jid: str, phrase_id: str,
-                       token: str | None = Query(None),
-                       x_journey_token: str | None = Header(None)) -> FileResponse:
-    """A looked-up phrase, read by the language's neutral phrasebook voice."""
-    journey = _journey(request, jid, token or x_journey_token)
-    found = phrasebook.find_phrase(journey, phrase_id)
-    if found is None:
-        raise HTTPException(404, "phrase not found")
-    voice = content().language(journey.language).phrasebook_voice.model_dump()
-    return await _audio(request, journey, found.text, phrase_id, voice)
 
 
 @app.post("/api/journeys/{jid}/reset")

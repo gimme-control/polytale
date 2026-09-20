@@ -117,7 +117,6 @@ export interface Summary {
   recalled: string[];
   lines: string[];
   next_scene: SceneRef | null;
-  phrasebook?: Phrase[];
 }
 
 export interface GameView {
@@ -133,20 +132,25 @@ export interface Ending {
   stats: { clues: number; words_mastered: number; words_shaky: number };
 }
 
-export interface PhraseSegment extends Segment {
-  /** per-word gloss of the learner's OWN sentence; "" for punctuation */
-  g: string;
+/** One patch of the living scene: a cutout and where it sits on the base plate. */
+export interface FrameLayer {
+  id: string;
+  url: string;
+  /** fractions of the background image, origin top-left */
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
-export interface Phrase {
-  phrase_id: string;
-  /** what the learner asked for, in the support language */
-  source: string;
-  segments: PhraseSegment[];
-  text: string;
-  romanization: string;
-  audio_url: string;
-  item_ids: string[];
+/**
+ * What the scene looks like now. The base plate never changes; these layers are painted
+ * over it, so nothing outside them can drift. No layers means the plate, exactly as it is.
+ */
+export interface Frame {
+  key: string;
+  expression: string;
+  layers: FrameLayer[];
 }
 
 export interface Story {
@@ -159,6 +163,9 @@ export interface Story {
 
 export interface TurnResult {
   turn: number;
+  /** every word he has said so far, each with that one word's meaning */
+  dictionary?: WordEntry[];
+  heard?: HeardWord[];
   lines: Line[];
   /** v3: the story's voice, shown before the character speaks */
   narration?: string | null;
@@ -166,6 +173,8 @@ export interface TurnResult {
   ending?: Ending | null;
   /** v2 only; v3 sends narration instead */
   stage_direction?: string | null;
+  /** the scene after this turn; the picture arrives later, the text never waits for it */
+  frame?: Frame | null;
   events: Entry[];
   progress: Progress;
   scene_complete: boolean;
@@ -198,6 +207,26 @@ export interface JourneyScene extends SceneCard {
   status: string;
 }
 
+/** One word of the scene's vocabulary, with what THAT WORD means.
+ *  A per-word meaning is a dictionary: nothing here says what a whole
+ *  sentence meant, so working out what he is asking for, and which words to put together,
+ *  is still the player's job. `heard` marks words he has already said out loud. */
+/** A word he actually said, as he said it. Free speech means he says words that are on no
+ *  list, so `gloss` is empty when the lexicon does not know the form he used. */
+export interface HeardWord {
+  text: string;
+  roman: string;
+  gloss: string;
+}
+
+export interface WordEntry {
+  item_id: string;
+  text: string;
+  roman: string;
+  gloss: string;
+  heard: boolean;
+}
+
 export interface PublicState {
   journey_id: string;
   language: Language;
@@ -212,7 +241,9 @@ export interface PublicState {
   story?: Story;
   game?: GameView;
   ending?: Ending | null;
-  phrasebook?: Phrase[];
+  dictionary?: WordEntry[];
+  heard?: HeardWord[];
+  frame?: Frame | null;
 }
 
 export interface Help {

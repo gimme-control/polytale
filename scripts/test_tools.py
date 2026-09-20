@@ -9,6 +9,7 @@ from core import game
 from core.content import load_content
 from core.dm import enter_scene
 from core.state import Attempt, ClueEntry, Exchange, Journey, new_journey
+from core.frames import EXPRESSIONS
 from core.tools import (
     MAX_WORD_SEGMENTS,
     ToolContext,
@@ -224,14 +225,6 @@ def test_record_item() -> None:
                                          "produced": False}, kctx)
     T.check("understanding without saying it needs the word to have been in the last lines",
             not is_error(receipt) and "nothing recorded" in receipt and "goal" not in k.vocab)
-    j, ctx = setup(said="pengyou zai nar")
-    assert j.scene is not None
-    j.scene.exchange = Exchange(phrasebook_item_ids=["where"])
-    execute("record_item", j, {"item_id": "where", "result": "understood", "produced": True}, ctx)
-    execute("record_item", j, {"item_id": "friend", "result": "understood", "produced": True}, ctx)
-    T.check("a word the player just looked up is stamped with_help; others are not",
-            j.vocab["where"].results[0].outcome == "with_help"
-            and j.vocab["friend"].results[0].outcome == "first_try")
     j, ctx = setup(mode=None)
     T.check("ERROR: no player attempt (the opening)", is_error(
         execute("record_item", j, {"item_id": "hello", "result": "understood", "produced": False},
@@ -244,11 +237,12 @@ def test_say() -> None:
     receipt = execute("say", j, say_args(good), ctx)
     T.check("valid say is terminal", not is_error(receipt) and ctx.terminal is not None, receipt)
     assert ctx.terminal is not None
-    T.check("terminal carries narration, validated lines and the hint (no mood, no highlights)",
+    T.check("terminal carries narration, validated lines, the hint and the face (no highlights)",
             ctx.terminal["lines"][0]["segments"][0].t == ZH.items["cheers"].text
             and ctx.terminal["lines"][0]["item_ids"] == ["cheers"]
             and ctx.terminal["narration"] == "The room roars at the screen."
-            and set(ctx.terminal) == {"lines", "narration", "intent_hint"},
+            and ctx.terminal["expression"] == "neutral"
+            and set(ctx.terminal) == {"lines", "narration", "intent_hint", "expression"},
             sorted(ctx.terminal))
 
     punct = {"segments": [{"t": ZH.items["cheers"].text, "r": ZH.items["cheers"].roman},
@@ -324,7 +318,8 @@ def test_say() -> None:
 def test_declarations() -> None:
     decls = {d["name"]: d for d in declaration_schemas(BAR, ZH)}
     T.check("the game's tools, say last",
-            list(decls) == ["adjust_trust", "record_item", "reveal_clue", "set_flag", "say"],
+            list(decls) == ["adjust_trust", "record_item", "reveal_clue", "set_flag",
+                            "show_beat", "say"],
             list(decls))
     T.check("ids are enums from the scene",
             decls["reveal_clue"]["parameters"]["properties"]["clue_id"]["enum"]
@@ -334,9 +329,10 @@ def test_declarations() -> None:
             and decls["record_item"]["parameters"]["properties"]["item_id"]["enum"]
             == BAR.targets)
     say = decls["say"]["parameters"]
-    T.check("say shape: narration, lines, hint (no mood, no stage_direction)",
-            set(say["required"]) == {"narration", "lines", "intent_hint"}
+    T.check("say shape: narration, lines, hint, expression (no mood, no stage_direction)",
+            set(say["required"]) == {"narration", "lines", "intent_hint", "expression"}
             and "mood" not in say["properties"] and "stage_direction" not in say["properties"]
+            and say["properties"]["expression"]["enum"] == list(EXPRESSIONS)
             and say["properties"]["lines"]["maxItems"] == 3)
     line_props = say["properties"]["lines"]["items"]["properties"]
     T.check("a line is segments + item_ids only",
@@ -345,7 +341,7 @@ def test_declarations() -> None:
     T.check("declarations leak no lexicon text and no secrets", not any(
         item.text in blob for item in ZH.items.values()) and "gate 2" not in blob.lower())
     T.check("gemini tool objects build",
-            len(tool_declarations(BAR, ZH)[0].function_declarations) == 5)
+            len(tool_declarations(BAR, ZH)[0].function_declarations) == 6)
     plain = ZH.model_copy(update={"romanization": None})
     j, _ = setup()
     ctx = ToolContext(scene=BAR, language=plain)

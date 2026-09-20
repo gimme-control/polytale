@@ -9,16 +9,18 @@ import { useGame } from "../store";
 import { Scene } from "./Scene";
 import { Subtitles } from "./Subtitles";
 import { InputBar } from "./InputBar";
+import { Heard } from "./Heard";
 import { Controls, SceneStatus } from "./TopBar";
 import { HistoryDrawer } from "./HistoryDrawer";
 import { NotebookDrawer } from "./Notebook";
-import { Phrasebook } from "./Phrasebook";
+import { DictionaryDrawer } from "./Dictionary";
+import { WordRail } from "./WordRail";
 import { useElementSize } from "../lib/hooks";
 
 export function PlayView() {
   const scene = useGame((s) => s.scene);
   const openNotebook = useGame((s) => s.openNotebook);
-  const [drawer, setDrawer] = useState<"history" | "notebook" | null>(null);
+  const [drawer, setDrawer] = useState<"history" | "notebook" | "dictionary" | null>(null);
   const closeDrawer = useCallback(() => setDrawer(null), []);
   const [columnRef, column] = useElementSize<HTMLDivElement>();
   const [headerRef, header] = useElementSize<HTMLElement>();
@@ -30,10 +32,11 @@ export function PlayView() {
   return (
     <main data-testid="play-view" data-scene={scene.id} className="slow-fade-in absolute inset-0 overflow-hidden">
       <Scene scene={scene} topInset={header.h + 16} />
+      <WordRail />
       <div
         ref={columnRef}
         data-testid="stage-column"
-        className="pointer-events-none absolute inset-0 z-20 mx-auto flex h-full w-full max-w-[900px] flex-col px-4 sm:px-6"
+        className="pointer-events-none absolute inset-0 z-20 mx-auto flex h-full w-full max-w-[900px] flex-col px-4 sm:px-6 lg:pl-[248px]"
       >
         <header ref={headerRef} className="flex shrink-0 items-start justify-between gap-3 pt-4 sm:pt-6">
           <SceneStatus />
@@ -43,16 +46,18 @@ export function PlayView() {
               openNotebook();
               setDrawer("notebook");
             }}
+            onDictionary={() => setDrawer("dictionary")}
           />
         </header>
         {/* The painting breathes here; the turn and the input stay together at the foot. */}
         <div className="min-h-0 flex-1" />
         <Subtitles compact={compact} />
+        <Heard />
         <InputBar />
       </div>
-      <Phrasebook />
       {drawer === "history" && <HistoryDrawer onClose={closeDrawer} />}
       {drawer === "notebook" && <NotebookDrawer onClose={closeDrawer} />}
+      {drawer === "dictionary" && <DictionaryDrawer onClose={closeDrawer} />}
     </main>
   );
 }

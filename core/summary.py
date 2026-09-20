@@ -88,5 +88,4 @@ def build_summary(journey: Journey, content: Content) -> Summary:
         lines=_lines(journey, content, items),
         next_scene=SceneRef(id=next_scene.id, name=next_scene.name, tagline=next_scene.tagline)
         if next_scene else None,
-        phrasebook=list(journey.game.phrasebook),
     )

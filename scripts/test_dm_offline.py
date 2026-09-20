@@ -94,7 +94,7 @@ def test_opening() -> None:
     j0 = enter_scene(new_journey(CONTENT, "off1", language="zh-CN"), CONTENT)
     assert j0.scene is not None
     T.check("a new journey starts with empty ledgers and no resources to spend",
-            j0.game.model_dump() == {"trust": {}, "clues": [], "flags": [], "phrasebook": [],
+            j0.game.model_dump() == {"trust": {}, "clues": [], "flags": [],
                                      "ending_id": None}, j0.game.model_dump())
     T.check("enter_scene prepares an unstarted run", not j0.scene.started
             and j0.scene.scene_id == SCENE_ID and j0.scene.goals_done == [])
@@ -108,11 +108,16 @@ def test_opening() -> None:
             len(client.models.calls) == 1 and not j0.scene.started and j0.vocab == {})
     T.check("TurnResult has the streamlined contract's keys", set(result.model_dump()) == {
         "turn", "lines", "narration", "events", "progress", "scene_complete",
-        "summary", "game", "ending", "latency_ms"}, sorted(result.model_dump()))
+        "summary", "game", "ending", "latency_ms", "dictionary", "heard", "frame"},
+        sorted(result.model_dump()))
+    T.check("the engine promises no picture: the server owns the art", result.frame is None)
     line = result.lines[1]
+    # The audio url is fingerprinted with the words it speaks, because line ids restart at
+    # s0-t0-l0 and a browser must not replay a cached clip under a new subtitle.
     T.check("line ids are s{scene}-t{turn}-l{i} with journey audio urls",
             [ln.line_id for ln in result.lines] == ["s0-t0-l0", "s0-t0-l1"]
-            and line.audio_url == "/api/journeys/off1/lines/s0-t0-l1/audio")
+            and line.audio_url.startswith("/api/journeys/off1/lines/s0-t0-l1/audio?v=")
+            and line.audio_url != result.lines[0].audio_url, line.audio_url)
     T.check("code derives text (no separator) and romanization (spaced)",
             line.text == zh.items["cheers"].text + zh.items["goal"].text
             and line.romanization == f"{zh.items['cheers'].roman} {zh.items['goal'].roman}")
@@ -121,9 +126,13 @@ def test_opening() -> None:
     T.check("events: narration then npc lines",
             [e.kind for e in result.events] == ["narration", "npc", "npc"]
             and result.narration == "The whole room is already shouting.")
+    # posed follows the scene's vocabulary order (scene.item_ids), not the order the
+    # character happened to say them: the second line says cheers+goal, and 'goal' is the
+    # earlier target, so it is posed first.
+    posed_in_scene_order = [i for i in BAR.item_ids if i in {"hello", "cheers", "goal"}]
     T.check("exchange ledger: posed, line ids, hint",
-            run.exchange.posed_item_ids == ["hello", "cheers", "goal"]
-            and run.exchange.intent_hint != "" and run.exchange.phrasebook_item_ids == [])
+            run.exchange.posed_item_ids == posed_in_scene_order == ["hello", "goal", "cheers"]
+            and run.exchange.intent_hint != "")
 
     sent = client.models.calls[0]
     snapshot, system = sent["contents"][0].parts[0].text, sent["config"].system_instruction
@@ -344,14 +353,28 @@ def test_payload_hygiene() -> None:
                BAR.clue("gate").text]  # type: ignore[union-attr]
     k = opened()
     state = views.public_state(k, CONTENT)
-    payloads = {"public_state": state.model_dump_json(), "turn_result": mid.model_dump_json(),
-                "help(1)": vocab.request_help(k).model_dump_json()}
+    payloads = {"public_state": state, "turn_result": mid, "help(1)": vocab.request_help(k)}
     said = [zh.items[key].text for key in ("hello", "cheers", "friend", "left")]
     unspoken = [i.text for i in zh.items.values() if not any(i.text in t for t in said)]
-    for name, blob in payloads.items():
-        T.check(f"{name}: no GM secrets, no gloss key, no unspoken lexicon text",
-                not any(s in blob for s in secrets) and '"gloss"' not in blob
-                and not any(t in blob for t in unspoken))
+    for name, payload in payloads.items():
+        T.check(f"{name}: no GM secrets", not any(s in payload.model_dump_json()
+                                                  for s in secrets), name)
+        # Word meanings during play live in exactly two fields, and both are one WORD at a
+        # time: `dictionary` (the scene's vocabulary, for looking up) and `heard` (the words
+        # he has actually said). Everywhere else the lexicon still reaches the player only
+        # through lines the character has spoken.
+        rest = payload.model_dump_json(exclude={"dictionary", "heard"})
+        T.check(f"{name}: no gloss key, no unspoken lexicon text outside the dictionary",
+                '"gloss"' not in rest and not any(t in rest for t in unspoken), name)
+    T.check("every heard word is one word he really said, and only glossed when known",
+            all(w.text and " " not in w.text.strip() for w in state.heard)
+            and any(w.gloss for w in state.heard),
+            [(w.text, w.gloss) for w in state.heard])
+    T.check("every dictionary entry is one word of this scene, glossed on its own",
+            [w.item_id for w in state.dictionary] and all(
+                w.item_id in BAR.item_ids and w.text == zh.items[w.item_id].text
+                and w.gloss == zh.items[w.item_id].gloss for w in state.dictionary),
+            [w.item_id for w in state.dictionary])
     assert state.scene is not None
     T.check("scene view is the room and the goals, never items or objects",
             set(state.scene.model_dump()) == {
@@ -359,11 +382,12 @@ def test_payload_hygiene() -> None:
                 "target_count"}, sorted(state.scene.model_dump()))
     T.check("game view mirrors the surviving ledgers only",
             state.game.model_dump() == {"trust": 0, "clues": []}
-            and state.phrasebook == [] and state.ending is None)
+            and state.ending is None)
     T.check("public state carries no persona, zones or mood",
             set(views.public_state(k, CONTENT).model_dump())
             == {"journey_id", "language", "scene", "started", "turn", "transcript", "progress",
-                "scene_complete", "summary", "scenes", "story", "game", "ending", "phrasebook"},
+                "scene_complete", "summary", "scenes", "story", "game", "ending", "dictionary",
+                "heard", "frame"},
             sorted(views.public_state(k, CONTENT).model_dump()))
     fresh = views.public_state(new_journey(CONTENT, "f1", language="zh-CN"), CONTENT)
     T.check("a journey with no scene yet has a clean public state",

@@ -7,7 +7,6 @@ import type {
   CreateJourneyResponse,
   Health,
   HelpResponse,
-  Phrase,
   PublicState,
   SceneBody,
   Summary,
@@ -39,14 +38,14 @@ export interface Api {
   act(jid: string, token: string, body: ActBody): Promise<TurnResult>;
   help(jid: string, token: string): Promise<HelpResponse>;
   /** "How do I say...?": the learner's own support-language sentence, never a character line. */
-  phrase(jid: string, token: string, text: string): Promise<Phrase>;
-  phraseAudio(jid: string, token: string, phraseId: string, audioUrl?: string): Promise<string>;
   finish(jid: string, token: string): Promise<Summary>;
   reset(jid: string, token: string): Promise<PublicState>;
   /** Playable URL for a line's audio (`?token=` appended). */
   lineAudio(jid: string, token: string, lineId: string, audioUrl?: string): Promise<string>;
   /** Playable URL for a bare item's audio (summary screen only). */
   itemAudio(jid: string, token: string, itemId: string, audioUrl?: string): Promise<string>;
+  /** Image URL for one patch of the living scene. Sync: it is only URL assembly. */
+  frameSrc(jid: string, token: string, layerId: string, url?: string): string;
 }
 
 export function withToken(url: string, token: string): string {
@@ -108,15 +107,14 @@ export function createHttpApi(): Api {
     },
     act: (jid, token, body) => request("POST", `${j(jid)}/act`, { token, json: body, timeoutMs: 90_000 }),
     help: (jid, token) => request("POST", `${j(jid)}/help`, { token, json: {} }),
-    phrase: (jid, token, text) => request("POST", `${j(jid)}/phrase`, { token, json: { text }, timeoutMs: 20_000 }),
-    phraseAudio: async (jid, token, phraseId, audioUrl) =>
-      withToken(audioUrl || `${j(jid)}/phrases/${encodeURIComponent(phraseId)}/audio`, token),
     finish: (jid, token) => request("POST", `${j(jid)}/finish`, { token, json: {} }),
     reset: (jid, token) => request("POST", `${j(jid)}/reset`, { token, json: {} }),
     lineAudio: async (jid, token, lineId, audioUrl) =>
       withToken(audioUrl || `${j(jid)}/lines/${encodeURIComponent(lineId)}/audio`, token),
     itemAudio: async (jid, token, itemId, audioUrl) =>
       withToken(audioUrl || `${j(jid)}/items/${encodeURIComponent(itemId)}/audio`, token),
+    frameSrc: (jid, token, layerId, url) =>
+      withToken(url || `${j(jid)}/frame/${encodeURIComponent(layerId)}`, token),
   };
 }
 

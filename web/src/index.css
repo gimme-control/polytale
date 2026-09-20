@@ -103,10 +103,12 @@ button:disabled {
 }
 
 /* Text over the painting: readable on any part of it without a box. */
+/* Text sits straight on a lit painting, so it needs a real backing, not a hint of one. */
 .over-art {
   text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.85),
-    0 0 14px rgb(0 0 0 / 0.55);
+    0 1px 2px rgb(0 0 0 / 0.95),
+    0 1px 10px rgb(0 0 0 / 0.85),
+    0 0 26px rgb(0 0 0 / 0.7);
 }
 
 .badge-in {
@@ -164,6 +166,10 @@ button:disabled {
   to {
     opacity: 0;
   }
+}
+/* The living scene settling back to the bare painting. */
+.frame-out {
+  animation: fade-out 700ms var(--ease-out) forwards;
 }
 .drawer-in {
   animation: drawer-in 240ms var(--ease-out) both;
