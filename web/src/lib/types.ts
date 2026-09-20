@@ -16,11 +16,10 @@ export interface Line {
   text: string;
   romanization: string;
   item_ids: string[];
-  highlight_object_ids: string[];
   audio_url: string;
 }
 
-export type InputMode = "speech" | "text" | "tap";
+export type InputMode = "speech" | "text";
 
 export interface NpcEntry {
   kind: "npc";
@@ -39,17 +38,11 @@ export interface LearnerEntry {
   input_mode: InputMode;
   transcript: string;
   romanized: string | null;
-  tapped_object_id: string | null;
-  /** v3: the verb used on the object ("show", "take", ...); absent means point */
-  action_id?: string | null;
 }
 export interface SceneEventEntry {
   kind: "scene";
   turn: number;
-  event: "object_moved" | "goal_done";
-  object_id?: string;
-  from?: string;
-  to?: string;
+  event: "goal_done";
   goal_id?: string;
 }
 export interface NarrationEntry {
@@ -69,37 +62,14 @@ export interface ClueEntry {
 }
 export type Entry = NpcEntry | DirectionEntry | LearnerEntry | SceneEventEntry | NarrationEntry | ClueEntry;
 
-export interface Position {
-  x: number;
-  y: number;
-  h: number;
-}
-
-export interface ObjectAction {
-  id: string;
-  /** support-language verb, e.g. "Show", "Drink" */
-  label: string;
-}
-
-export interface SceneObject {
-  id: string;
-  art_url: string;
-  price: number | null;
-  positions: Record<string, Position>;
-  /** v3 verbs; absent or empty means the object can only be pointed at */
-  actions?: ObjectAction[];
-}
-
 export interface SceneView {
   id: string;
   name: string;
   tagline: string;
   intro: string;
   background_url: string;
-  mood_urls: Record<string, string>;
   cover_url: string;
   npc: { name: string; role: string; anchor: { x: number; y: number } };
-  objects: SceneObject[];
   goals: { id: string; label: string }[];
   target_count: number;
 }
@@ -150,15 +120,9 @@ export interface Summary {
   phrasebook?: Phrase[];
 }
 
-export type Difficulty = "story" | "immersion";
-
 export interface GameView {
-  wallet: number;
-  clock: { label: string; time: string; minutes_left: number; minutes_total: number };
   trust: number;
   clues: Clue[];
-  difficulty: Difficulty;
-  prices: Record<string, number>;
 }
 
 export interface Ending {
@@ -166,7 +130,7 @@ export interface Ending {
   title: string;
   text: string;
   art_url: string;
-  stats: { minutes_left: number; wallet: number; clues: number; words_mastered: number; words_shaky: number };
+  stats: { clues: number; words_mastered: number; words_shaky: number };
 }
 
 export interface PhraseSegment extends Segment {
@@ -202,8 +166,6 @@ export interface TurnResult {
   ending?: Ending | null;
   /** v2 only; v3 sends narration instead */
   stage_direction?: string | null;
-  mood: string;
-  zones: Record<string, string>;
   events: Entry[];
   progress: Progress;
   scene_complete: boolean;
@@ -217,14 +179,13 @@ export interface Language {
   native_name: string;
   romanization_label: string | null;
   word_spacing: boolean;
-  /** extension: prefix for price tags; digits only when absent */
-  currency_symbol?: string | null;
 }
 
-export interface Persona {
-  id: string;
-  label: string;
-  blurb: string;
+/** One row of `GET /api/catalog`'s `languages`: what the start screen offers. */
+export interface LanguageOption {
+  locale: string;
+  name: string;
+  native_name: string;
 }
 
 export interface SceneCard extends SceneRef {
@@ -240,14 +201,10 @@ export interface JourneyScene extends SceneCard {
 export interface PublicState {
   journey_id: string;
   language: Language;
-  persona_id: string;
-  personas: Persona[];
   scene: SceneView | null;
   started: boolean;
   turn: number;
   transcript: Entry[];
-  zones: Record<string, string>;
-  mood: string;
   progress: Progress;
   scene_complete: boolean;
   summary: Summary | null;
@@ -262,7 +219,6 @@ export interface Help {
   level: number;
   kind: "again" | "hint";
   line_ids: string[];
-  highlight_object_ids: string[];
   hint: string | null;
 }
 
@@ -282,9 +238,11 @@ export interface Transcription {
 }
 
 export interface Catalog {
+  /** the journey's default/active language */
   language: Language;
+  /** every language the story can be played in */
+  languages: LanguageOption[];
   scenes: SceneCard[];
-  personas: Persona[];
   /** extension: lets the title screen show the story before a journey exists */
   story?: Story;
 }
@@ -303,7 +261,7 @@ export interface CreateJourneyResponse {
 }
 
 /** POST /act takes exactly one of these. */
-export type ActBody = { attempt_id: string } | { text: string } | { tap_object_id: string; action_id?: string };
+export type ActBody = { attempt_id: string } | { text: string };
 
 export interface SceneBody {
   scene_id?: string;

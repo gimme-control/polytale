@@ -14,7 +14,6 @@ from typing import Any
 
 from core import game, vocab
 from core.content import (
-    NEUTRAL_MOOD,
     SUPPORT_LANGUAGE,
     TRUST_MAX,
     TRUST_MIN,
@@ -29,7 +28,6 @@ from core.state import (
     ClueEntry,
     ClueView,
     Journey,
-    LearnerEntry,
     SceneEventEntry,
     SceneRun,
     Segment,
@@ -50,11 +48,6 @@ class ToolContext:
     scene: Scene
     language: Language
     attempt: Attempt | None = None
-    # Items mastered when the turn began. The highlight gate judges against what the snapshot
-    # told the model, not against results recorded earlier in the same response.
-    mastered: frozenset[str] = frozenset()
-    # Words owed an unsupported pass when the turn began (see vocab.owed_items).
-    owed: tuple[str, ...] = ()
     trust_adjusted: bool = False
     round_errors: list[str] = field(default_factory=list)
     terminal: dict[str, Any] | None = None
@@ -72,13 +65,11 @@ def _run(journey: Journey) -> SceneRun:
 def now_line(journey: Journey, scene: Scene) -> str:
     """Compact committed-state summary appended to every receipt."""
     run, state = _run(journey), journey.game
-    zones = ", ".join(f"{oid}={zone}" for oid, zone in run.zones.items())
     goals = ", ".join(
         f"{g.id}={'done' if g.id in run.goals_done else 'open'}" for g in scene.goals
     )
-    return (f"NOW zones: {zones} | goals: {goals} | wallet: {state.wallet} | trust: "
-            f"{game.trust(journey, scene)} | clues: {', '.join(state.clues) or '-'} | flags: "
-            f"{', '.join(state.flags) or '-'} | mood: {run.mood}")
+    return (f"NOW goals: {goals} | trust: {game.trust(journey, scene)} | clues: "
+            f"{', '.join(state.clues) or '-'} | flags: {', '.join(state.flags) or '-'}")
 
 
 def complete_ready_goals(journey: Journey, scene: Scene) -> list[str]:
@@ -87,7 +78,7 @@ def complete_ready_goals(journey: Journey, scene: Scene) -> list[str]:
     done: list[str] = []
     for goal in scene.goals:
         if goal.id not in run.goals_done and goal.when.holds(
-                run.zones, journey.game.clues, journey.game.flags):
+                journey.game.clues, journey.game.flags):
             run.goals_done.append(goal.id)
             run.transcript.append(
                 SceneEventEntry(turn=run.turn, event="goal_done", goal_id=goal.id))
@@ -139,30 +130,6 @@ def _str_list(raw: Any) -> list[str] | None:
 # ---------------------------------------------------------------- executors
 
 
-def exec_move_object(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
-    run, scene = _run(journey), ctx.scene
-    oid, zone = _str(args, "object_id"), _str(args, "to_zone")
-    obj = scene.object(oid)
-    if obj is None:
-        valid = ", ".join(o.id for o in scene.objects)
-        return _err(journey, ctx, f"unknown object_id '{oid}'. Valid: {valid}")
-    if zone not in scene.zones:
-        return _err(journey, ctx, f"unknown to_zone '{zone}'. Valid: {', '.join(scene.zones)}")
-    if not obj.can_be_in(zone):
-        places = ", ".join(z for z in scene.zones if obj.can_be_in(z))
-        return _err(journey, ctx, f"{oid} has no place in '{zone}'. It can be in: {places}")
-    before = run.zones.get(oid, obj.zone)
-    if before == zone:
-        return _ok(journey, ctx, f"{oid} is already in {zone} (no change)")
-    run.zones[oid] = zone
-    run.transcript.append(
-        SceneEventEntry(turn=run.turn, event="object_moved", object_id=oid,
-                        from_zone=before, to_zone=zone)
-    )
-    unlit = " It is out of sight now: do not light it up." if zone == "gone" else ""
-    return _ok(journey, ctx, f"{oid} moved {before} -> {zone}.{unlit}{_goal_note(journey, scene)}")
-
-
 def _squash(text: str) -> str:
     """Letters and digits only, no marks, no case: how typed and heard input is compared."""
     plain = unicodedata.normalize("NFD", text)
@@ -192,13 +159,12 @@ def exec_record_item(journey: Journey, args: dict[str, Any], ctx: ToolContext) -
     if result not in RESULTS:
         return _err(journey, ctx, f"result must be one of {', '.join(RESULTS)}")
     exchange = _run(journey).exchange
-    produced = bool(args.get("produced")) and attempt.input_mode != "tap"
+    produced = bool(args.get("produced"))
     if produced and not player_said(attempt, ctx.language.items[item_id]):
         return _ok(journey, ctx, f"nothing recorded for {item_id}: the player's own words do "
                                  "not contain it (a foreign word that means it is not it)")
     language = ctx.language
-    if attempt.input_mode != "tap" and not any(
-            player_said(attempt, item) for item in language.items.values()):
+    if not any(player_said(attempt, item) for item in language.items.values()):
         return _ok(journey, ctx, f"nothing recorded for {item_id}: nothing the player said is "
                                  f"{language.name}, so it shows nothing about their {language.name}")
     if not produced and item_id not in exchange.posed_item_ids:
@@ -213,51 +179,6 @@ def exec_record_item(journey: Journey, args: dict[str, Any], ctx: ToolContext) -
     state = journey.record(item_id).state
     recall = " RECALL from an earlier scene." if stamped.recall else ""
     return _ok(journey, ctx, f"{item_id}: {stamped.outcome} -> {state}.{recall}")
-
-
-def exec_pay(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
-    if ctx.attempt is None:
-        return _err(journey, ctx, "the player has not done anything yet; nobody pays in the opening")
-    scene, state = ctx.scene, journey.game
-    amount, tip = _int(args, "amount"), bool(args.get("tip"))
-    object_ids = _str_list(args.get("for_object_ids")) or []
-    if amount is None or amount <= 0:
-        return _err(journey, ctx, "amount must be a positive whole number")
-    priced: dict[str, int] = {}
-    for oid in object_ids:
-        price = game.price_of(journey, scene, oid)
-        if price is None:
-            return _err(journey, ctx, f"'{oid}' is not something with a price here")
-        priced[oid] = price
-    if not tip and not priced:
-        return _err(journey, ctx, "say what is being paid for (for_object_ids), or set tip=true")
-    if not tip and amount != sum(priced.values()):
-        owed = " + ".join(f"{oid} {p}" for oid, p in priced.items())
-        return _err(journey, ctx, f"amount must equal the current prices: {owed} = "
-                                  f"{sum(priced.values())} (haggle with set_price first)")
-    if amount > state.wallet:
-        return _err(journey, ctx, f"the player only has {state.wallet}: they cannot pay {amount}. "
-                                  "Nothing was paid; play that moment instead")
-    state.wallet -= amount
-    state.spent += amount
-    _run(journey).spent += amount
-    paid = state.paid_for.setdefault(scene.id, [])
-    paid += [oid for oid in priced if oid not in paid]
-    what = ", ".join(priced) if priced else "a tip"
-    return _ok(journey, ctx, f"paid {amount} for {what}; the player has {state.wallet} left")
-
-
-def exec_set_price(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
-    obj, amount = ctx.scene.object(_str(args, "object_id")), _int(args, "amount")
-    if obj is None or obj.price is None:
-        return _err(journey, ctx, f"'{_str(args, 'object_id')}' is not something with a price")
-    if obj.price_floor is None:
-        return _err(journey, ctx, f"the price of {obj.id} is fixed at {obj.price}: no haggling")
-    if amount is None or not obj.price_floor <= amount <= obj.price:
-        return _err(journey, ctx, f"{obj.id} can go no lower than {obj.price_floor} and no higher "
-                                  f"than {obj.price}; hold the line at {obj.price_floor}")
-    journey.game.prices.setdefault(ctx.scene.id, {})[obj.id] = amount
-    return _ok(journey, ctx, f"{obj.id} now costs {amount}")
 
 
 def exec_adjust_trust(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
@@ -310,11 +231,6 @@ def exec_set_flag(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> s
         return _err(journey, ctx, f"unknown flag '{_str(args, 'flag')}'. Valid: {valid}")
     if flag.id in journey.game.flags:
         return _ok(journey, ctx, f"flag {flag.id} is already set (no change)")
-    paid = journey.game.paid_for.get(ctx.scene.id, [])
-    if flag.requires_paid and not any(o in paid for o in flag.requires_paid):
-        return _err(journey, ctx, f"flag {flag.id} needs {' or '.join(flag.requires_paid)} paid "
-                                  "for first (the pay tool, in this same response, before "
-                                  "set_flag). It has not happened yet; play what did")
     journey.game.flags.append(flag.id)
     openable = [c.id for c in ctx.scene.clues
                 if c.id not in journey.game.clues and game.can_reveal(journey, ctx.scene, c)]
@@ -324,15 +240,11 @@ def exec_set_flag(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> s
 
 def describe_when(when: GoalWhen) -> str:
     """Plain-words goal condition for receipts and the snapshot."""
-    clauses = [f"{oid} in {zone}" for oid, zone in when.in_zone.items()]
+    clauses: list[str] = []
     if when.clue is not None:
         clauses.append(f"clue {when.clue} revealed")
     if when.flag is not None:
         clauses.append(f"flag {when.flag} set")
-    if when.any_in_zone is not None:
-        clauses.append(
-            f"any of {'/'.join(when.any_in_zone.objects)} in {when.any_in_zone.zone}"
-        )
     return " and ".join(clauses)
 
 
@@ -346,7 +258,7 @@ def is_clean_word(text: str) -> bool:
     (apostrophe, hyphen, middle dot). Sentence punctuation belongs in its own segment."""
     return all(
         unicodedata.category(ch)[0] in "LNM" or unicodedata.category(ch) == "Pd"
-        or ch in "'\u2019\u00b7"
+        or ch in "'’·"
         for ch in text
     )
 
@@ -360,17 +272,8 @@ def spoken(segments: Sequence[Any], part: str, word_spacing: bool) -> bool:
     return any(texts[i:i + len(wanted)] == wanted for i in range(len(texts)))
 
 
-def _has_been_out(run: SceneRun, object_id: str) -> bool:
-    """True once the player has used the object or it has changed hands in this act."""
-    return any(
-        (isinstance(e, LearnerEntry) and e.tapped_object_id == object_id)
-        or (isinstance(e, SceneEventEntry) and e.object_id == object_id)
-        for e in run.transcript
-    )
-
-
 def _validate_line(
-    journey: Journey, raw: Any, index: int, ctx: ToolContext
+    raw: Any, index: int, ctx: ToolContext
 ) -> tuple[dict[str, Any] | None, str | None]:
     where = f"lines[{index}]"
     scene, romanized = ctx.scene, ctx.language.romanization is not None
@@ -409,9 +312,9 @@ def _validate_line(
         return None, f"{where} has no words"
     if words > MAX_WORD_SEGMENTS:
         return None, f"{where} is too long ({words} words): say less, at most 8 words a line"
-    item_ids, object_ids = _str_list(raw.get("item_ids")), _str_list(raw.get("highlight_object_ids"))
-    if item_ids is None or object_ids is None:
-        return None, f"{where}.item_ids and highlight_object_ids must be lists"
+    item_ids = _str_list(raw.get("item_ids"))
+    if item_ids is None:
+        return None, f"{where}.item_ids must be a list"
     for item_id in item_ids:
         if item_id not in scene.item_ids:
             return None, f"{where}.item_ids: unknown item '{item_id}'"
@@ -423,32 +326,7 @@ def _validate_line(
         if all(spoken(segments, p, ctx.language.word_spacing)
                for p in ctx.language.items[i].parts)
     ]
-    run = _run(journey)
-    for oid in object_ids:
-        obj = scene.object(oid)
-        if obj is None:
-            valid = ", ".join(o.id for o in scene.objects)
-            return None, f"{where}.highlight_object_ids: unknown object '{oid}'. Valid: {valid}"
-        if run.zones.get(oid) == "gone":
-            return None, f"{where}: {oid} is gone and cannot be highlighted"
-        if (run.zones.get(oid) == "inventory" and "pay" not in obj.actions
-                and not _has_been_out(run, oid)):
-            return None, (
-                f"{where}: {oid} is still in the player's pocket. Your character has never "
-                "seen it and cannot point at it; drop that highlight"
-            )
-        if obj.item_id not in item_ids:
-            return None, (
-                f"{where} highlights {oid} but does not say its word "
-                f"({ctx.language.items[obj.item_id].text}). A highlight means \"this word is "
-                "that thing\": light an object only on a line that names it, or drop the highlight"
-            )
-        if obj.item_id in ctx.mastered:
-            return None, (
-                f"{where}: {oid} cannot be highlighted: this learner has mastered "
-                f"'{obj.item_id}'. mastered: present it with no highlight"
-            )
-    return {"segments": segments, "item_ids": item_ids, "highlight_object_ids": object_ids}, None
+    return {"segments": segments, "item_ids": item_ids}, None
 
 
 def exec_say(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
@@ -464,7 +342,7 @@ def exec_say(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
         return _err(journey, ctx, f"lines must hold 1 to {MAX_LINES} lines")
     lines: list[dict[str, Any]] = []
     for i, raw in enumerate(raw_lines):
-        line, error = _validate_line(journey, raw, i, ctx)
+        line, error = _validate_line(raw, i, ctx)
         if error is not None or line is None:
             return _err(journey, ctx, error or "invalid line")
         lines.append(line)
@@ -487,19 +365,13 @@ def exec_say(journey: Journey, args: dict[str, Any], ctx: ToolContext) -> str:
         return _err(journey, ctx, "intent_hint is required: what do you want from the learner?")
     if len(hint.split()) > MAX_HINT_WORDS:
         return _err(journey, ctx, f"intent_hint: at most {MAX_HINT_WORDS} words")
-    mood = _str(args, "mood") or NEUTRAL_MOOD
-    if mood not in ctx.scene.moods:
-        return _err(journey, ctx, f"mood must be one of {', '.join(ctx.scene.moods)}")
-    ctx.terminal = {"lines": lines, "narration": narration, "intent_hint": hint, "mood": mood}
+    ctx.terminal = {"lines": lines, "narration": narration, "intent_hint": hint}
     return _ok(journey, ctx, "said; the turn ends")
 
 
 Executor = Callable[[Journey, dict[str, Any], ToolContext], str]
 
 EXECUTORS: dict[str, Executor] = {
-    "move_object": exec_move_object,
-    "pay": exec_pay,
-    "set_price": exec_set_price,
     "adjust_trust": exec_adjust_trust,
     "reveal_clue": exec_reveal_clue,
     "set_flag": exec_set_flag,
@@ -525,7 +397,6 @@ def _enum(values: list[str], description: str) -> dict[str, Any]:
 
 def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]]:
     """JSON-schema tool declarations with this scene's ids as enums."""
-    object_ids = [o.id for o in scene.objects]
     roman = language.romanization
     r_description = (
         f"{roman.system} for this word, with its proper marks. \"\" for punctuation."
@@ -558,69 +429,20 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                 "items": _enum(scene.item_ids, "Item whose word is spoken in this line."),
                 "description": "Every listed item whose word you actually say in this line.",
             },
-            "highlight_object_ids": {
-                "type": "array",
-                "items": _enum(object_ids, "Object to light up while this line plays."),
-                "description": (
-                    "Objects the learner sees light up during THIS line. A highlight tells "
-                    "them \"this word is that thing\", so light an object ONLY on a line "
-                    "that says that object's own word (a line that is just a price, a "
-                    "thank-you or 'this one' lights nothing). Follow each word's "
-                    "presentation guidance; a mastered word's object is refused."
-                ),
-            },
         },
-        "required": ["segments", "item_ids", "highlight_object_ids"],
+        "required": ["segments", "item_ids"],
     }
     flag_ids = [f.id for f in scene.flags]
     clue_ids = [c.id for c in scene.clues]
-    priced = [o.id for o in scene.objects if o.price is not None]
-    haggle = [o.id for o in scene.objects if o.price_floor is not None]
     decls: list[dict[str, Any]] = [
-        {
-            "name": "move_object",
-            "description": (
-                "Something physically happens to an object: you serve it (to counter), take "
-                "it back (to display), take something the player hands you (to npc), hand "
-                "them something to keep (to inventory), it is eaten, drunk or cleared away "
-                "(to gone). This is how the player SEES what happened. Only move what the "
-                "moment really calls for."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_id": _enum(object_ids, "Object that moves."),
-                    "to_zone": _enum(list(scene.zones), "Where it ends up."),
-                },
-                "required": ["object_id", "to_zone"],
-            },
-        },
-        {
-            "name": "pay",
-            "description": (
-                "The player pays you. Only when they have handed money over or clearly agreed "
-                "to pay. amount must equal the current prices of for_object_ids (after any "
-                "set_price), unless tip=true. The server refuses what they cannot afford: "
-                "then nothing was paid, and you play that moment."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "amount": {"type": "integer", "description": "Cash that changes hands."},
-                    "for_object_ids": {"type": "array", "items": _enum(priced, "Paid for."),
-                                       "description": "What this payment settles."},
-                    "tip": {"type": "boolean", "description": "True for money beyond prices."},
-                },
-                "required": ["amount", "for_object_ids"],
-            },
-        },
         {
             "name": "adjust_trust",
             "description": (
                 "How your character feels about the player just moved, because of what they "
-                "just did: +1 for manners, paying without fuss, good company, nerve you "
-                "admire, kindness; -1 for rudeness, shouting in a foreign language, trying to "
-                "cheat, pushing too hard. At most once per turn; most turns, not at all."
+                "just did: +1 for good company, joining in, nerve you admire, kindness, "
+                "getting behind the team; -1 for rudeness, shouting in a foreign language, "
+                "sneering at the match, pushing too hard. At most once per turn; most turns, "
+                "not at all."
             ),
             "parameters": {
                 "type": "object",
@@ -639,12 +461,11 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                 "nothing at all: record nothing for it, not even missed (a foreign word that "
                 "happens to MEAN a listed word is still a foreign word). understood = "
                 "they used the word themselves (any spelling, romanized, bad pronunciation, "
-                "bare word) or acted correctly on a word you had just said (answered it, "
-                "pointed at the right thing). missed = ONLY a wrong ACTION: you had just put "
-                "that word to them and they pointed at, or asked for, the wrong thing. One "
-                "call per word the attempt clearly involved; a word that only occurs inside a "
-                "longer listed phrase they said counts for the phrase, not separately. The "
-                "server decides what the result is worth. Never let this shape the story."
+                "bare word) or answered correctly a word you had just said. missed = ONLY a "
+                "clearly wrong answer to a word you had just put to them. One call per word "
+                "the attempt clearly involved; a word that only occurs inside a longer listed "
+                "phrase they said counts for the phrase, not separately. The server decides "
+                "what the result is worth. Never let this shape the story."
             ),
             "parameters": {
                 "type": "object",
@@ -660,25 +481,6 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
             },
         },
     ]
-    if haggle:
-        decls.append({
-            "name": "set_price",
-            "description": (
-                "Haggling: your character names a new price for something. Call it in the "
-                "SAME turn the new price is spoken, so the price tag the player sees matches "
-                "what they heard. The server holds you to your floor and your asking price. "
-                "Come down only when the player actually pushes back, and make them work "
-                "for it."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_id": _enum(haggle, "What is being haggled over."),
-                    "amount": {"type": "integer", "description": "The newly agreed price."},
-                },
-                "required": ["object_id", "amount"],
-            },
-        })
     if clue_ids:
         decls.append({
             "name": "reveal_clue",
@@ -718,8 +520,8 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                     "description": (
                         f"Required. {SUPPORT_LANGUAGE}, second person, present tense, the "
                         "player's own inner voice: 1-3 short sentences, at most 45 words. "
-                        "What happens, what it costs, what it feels like. Never a "
-                        "word-for-word translation of your lines."
+                        "What happens, what it feels like. Never a word-for-word translation "
+                        "of your lines."
                     ),
                 },
                 "lines": {"type": "array", "items": line, "minItems": 1, "maxItems": MAX_LINES,
@@ -732,13 +534,8 @@ def declaration_schemas(scene: Scene, language: Language) -> list[dict[str, Any]
                         "quote your words, never pair a word with its meaning."
                     ),
                 },
-                "mood": _enum(
-                    scene.moods,
-                    "Your character's visible expression as the turn ends. puzzled whenever "
-                    "they did not catch what the player said.",
-                ),
             },
-            "required": ["narration", "lines", "intent_hint", "mood"],
+            "required": ["narration", "lines", "intent_hint"],
         },
     })
     return decls

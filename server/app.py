@@ -26,7 +26,7 @@ from pydantic import BaseModel
 import media
 from core import dm, phrasebook
 from core.content import CONTENT_ROOT, resolve_art_path
-from core.state import Attempt, Journey, Line, Phrase, set_difficulty, set_persona
+from core.state import Attempt, Journey, Line, Phrase
 from core.views import (
     art_url,
     find_line,
@@ -87,13 +87,9 @@ def _dump(model: BaseModel) -> dict[str, Any]:
 
 
 def _voice(journey: Journey) -> dict[str, Any]:
-    """The scene character's voice, its delivery coloured by the active persona."""
+    """The scene character's own voice."""
     assert journey.scene is not None
-    voice = content().scene(journey.scene.scene_id).npc.voice.model_dump()
-    persona = content().persona(journey.persona_id)
-    styles = (voice["style"], persona.voice_style if persona else "")
-    voice["style"] = " ".join(s for s in styles if s)
-    return voice
+    return content().scene(journey.scene.scene_id).npc.voice.model_dump()
 
 
 async def _run_model(request: Request, fn: Callable[..., Any], *args: Any) -> Any:
@@ -141,10 +137,12 @@ def catalog() -> dict[str, Any]:
     return {
         "story": _dump(story_view(c)),
         "language": _dump(language_view(c.language(DEFAULT_LANGUAGE))),
+        "languages": [{"locale": lang.locale, "name": lang.name,
+                       "native_name": lang.native_name}
+                      for lang in sorted(c.languages.values(), key=lambda x: x.locale)],
         "scenes": [{"id": s.id, "name": s.name, "tagline": s.tagline, "intro": s.intro,
                     "cover_url": art_url(s.id, s.art.cover)}
                    for s in (c.scene(sid) for sid in c.journey.scenes)],
-        "personas": [{"id": p.id, "label": p.label, "blurb": p.blurb} for p in c.personas],
     }
 
 
@@ -176,7 +174,6 @@ def art(scene_id: str, path: str) -> FileResponse:
 
 
 class CreateBody(BaseModel):
-    persona_id: str | None = None
     language: str | None = None
 
 
@@ -188,29 +185,18 @@ class SceneBody(BaseModel):
 class ActBody(BaseModel):
     attempt_id: str | None = None
     text: str | None = None
-    tap_object_id: str | None = None
-    action_id: str | None = None  # the verb for tap_object_id; omitted = point
 
 
 class PhraseBody(BaseModel):
     text: str
 
 
-class DifficultyBody(BaseModel):
-    difficulty: str
-
-
-class PersonaBody(BaseModel):
-    persona_id: str
-
-
 @app.post("/api/journeys")
 def create_journey(request: Request, body: CreateBody) -> dict[str, Any]:
     try:
-        journey, token = _store(request).create(language=body.language or DEFAULT_LANGUAGE,
-                                                persona_id=body.persona_id)
+        journey, token = _store(request).create(language=body.language or DEFAULT_LANGUAGE)
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from None
+        raise HTTPException(400, str(exc)) from None
     return {"journey_id": journey.journey_id, "token": token,
             "state": _dump(public_state(journey, content()))}
 
@@ -298,11 +284,9 @@ async def transcribe(
 
 
 def _attempt_from(journey: Journey, body: ActBody) -> dict[str, Any]:
-    given = [v is not None for v in (body.attempt_id, body.text, body.tap_object_id)]
+    given = [v is not None for v in (body.attempt_id, body.text)]
     if sum(given) != 1:
-        raise HTTPException(422, "send exactly one of attempt_id, text, tap_object_id")
-    if body.action_id is not None and body.tap_object_id is None:
-        raise HTTPException(422, "action_id goes with tap_object_id")
+        raise HTTPException(422, "send exactly one of attempt_id, text")
     if body.attempt_id is not None:
         pending = journey.attempts.get(body.attempt_id)
         if pending is None:
@@ -312,14 +296,11 @@ def _attempt_from(journey: Journey, body: ActBody) -> dict[str, Any]:
         if not pending.transcript.strip():
             raise HTTPException(422, "nothing was heard in that recording")
         return pending.model_dump()
-    new_id = f"a-{uuid.uuid4().hex[:12]}"
-    if body.text is not None:
-        text = body.text.strip()
-        if not text:
-            raise HTTPException(422, "empty text")
-        return {"attempt_id": new_id, "input_mode": "text", "transcript": text[:300]}
-    return {"attempt_id": new_id, "input_mode": "tap", "tapped_object_id": body.tap_object_id,
-            "action_id": body.action_id}
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(422, "empty text")
+    return {"attempt_id": f"a-{uuid.uuid4().hex[:12]}", "input_mode": "text",
+            "transcript": text[:300]}
 
 
 @app.post("/api/journeys/{jid}/act")
@@ -348,43 +329,17 @@ async def help_(request: Request, jid: str,
     async with _store(request).lock(jid):
         journey = _journey(request, jid, x_journey_token)
         try:
-            given = request_help(journey, content())
+            given = request_help(journey)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         _store(request).save(journey)
     return {"help": _dump(given), "progress": _dump(progress_view(journey, content()))}
 
 
-@app.post("/api/journeys/{jid}/persona")
-async def persona(request: Request, jid: str, body: PersonaBody,
-                  x_journey_token: str | None = Header(None)) -> dict[str, Any]:
-    async with _store(request).lock(jid):
-        journey = _journey(request, jid, x_journey_token)
-        try:
-            set_persona(journey, content(), body.persona_id)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
-        _store(request).save(journey)
-    return _dump(public_state(journey, content()))
-
-
-@app.post("/api/journeys/{jid}/difficulty")
-async def difficulty(request: Request, jid: str, body: DifficultyBody,
-                     x_journey_token: str | None = Header(None)) -> dict[str, Any]:
-    async with _store(request).lock(jid):
-        journey = _journey(request, jid, x_journey_token)
-        try:
-            set_difficulty(journey, body.difficulty)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
-        _store(request).save(journey)
-    return _dump(public_state(journey, content()))
-
-
 @app.post("/api/journeys/{jid}/phrase")
 async def phrase(request: Request, jid: str, body: PhraseBody,
                  x_journey_token: str | None = Header(None)) -> dict[str, Any]:
-    """"How do I say…?" for the player's OWN words. Costs no turn and no clock.
+    """"How do I say…?" for the player's OWN words. Costs no turn.
 
     The model call runs outside the journey lock (it only reads), so a lookup never delays a
     turn; the ledger write takes the lock.

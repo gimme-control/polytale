@@ -6,7 +6,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AUTO_SUBMIT_MS, useGame } from "../store";
 import { mic } from "../audio/recorder";
-import { inventoryOf, trayBox } from "./Scene";
 
 export function InputBar() {
   const phase = useGame((s) => s.phase);
@@ -28,18 +27,10 @@ export function InputBar() {
   const draft = useGame((s) => s.draft);
   const setPhraseOpen = useGame((s) => s.setPhraseOpen);
   const hasPhrasebook = useGame((s) => !!s.game);
-  const slots = useGame((s) => (s.scene ? inventoryOf(s.scene, s.zones).length : 1));
 
   const [text, setText] = useState("");
-  const [vw, setVw] = useState(() => window.innerWidth);
   const field = useRef<HTMLInputElement | null>(null);
   const spaceHeld = useRef(false);
-
-  useEffect(() => {
-    const onResize = () => setVw(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   // "Use it" from the phrasebook lands here; the learner still sends it (or says it).
   useEffect(() => {
@@ -106,22 +97,18 @@ export function InputBar() {
     if (!(await sendText(sent))) setText(sent);
   };
 
-  // The wallet tray lives bottom-left; the bar never sits on it.
-  const tray = trayBox(vw, slots);
-  const gutter = tray.left + tray.width + 10;
-  const pad = vw < 640 ? { paddingLeft: gutter } : vw < 680 + gutter * 2 ? { paddingLeft: gutter, paddingRight: gutter, maxWidth: "none" } : undefined;
   const state = phase === "idle" && speaking ? "speaking" : phase;
 
   return (
-    <div className="pointer-events-none mx-auto w-full max-w-[680px] px-3 pb-3 sm:px-0 sm:pb-6 [@media(max-height:520px)]:sm:pb-3" style={pad}>
+    <div className="pointer-events-none mx-auto w-full max-w-[680px] shrink-0 pb-4 pt-3 sm:pb-7 sm:pt-5 [@media(max-height:520px)]:sm:pb-3">
       {hasPhrasebook && (
-        <div className="flex justify-end pb-1 min-[1100px]:hidden">
+        <div className="flex justify-center pb-2">
           <button type="button" data-testid="phrasebook-open" onClick={() => setPhraseOpen(true)} className="over-art pointer-events-auto border-0 bg-transparent px-1 py-1 text-[13px] font-medium text-ink-2 underline decoration-hair-2 underline-offset-4 hover:text-ink">
             How do I say…?
           </button>
         </div>
       )}
-      <div className="flex min-h-6 items-end justify-center pb-2">
+      <div className="flex min-h-6 items-end justify-center pb-1.5">
         {notice && (
           <p data-testid="notice" role="status" className="fade-in over-art pointer-events-auto m-0 flex items-center gap-3 text-[13px] text-ink-2">
             <span>{notice}</span>
@@ -203,7 +190,7 @@ export function InputBar() {
       </form>
 
       <p className="m-0 hidden pt-2 text-center text-[12px] text-ink-3 sm:block [@media(max-height:520px)]:sm:hidden">
-        {phase === "listening" ? "Let go to send" : "Enter to send · hold Space to talk · click things to use them"}
+        {phase === "listening" ? "Let go to send" : "Enter to send · hold Space to talk"}
       </p>
     </div>
   );

@@ -12,14 +12,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
-from core.content import DIFFICULTIES, NEUTRAL_MOOD, Content
+from core.content import Content
 
 STATES_ROOT = Path(__file__).resolve().parents[1] / "states"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
-InputMode = Literal["speech", "text", "tap"]
+InputMode = Literal["speech", "text"]
 Outcome = Literal["first_try", "with_help", "with_hint", "missed"]
 VocabState = Literal["not_encountered", "shaky", "mastered"]
 
@@ -71,7 +71,6 @@ class Line(BaseModel):
     text: str
     romanization: str
     item_ids: list[str] = Field(default_factory=list)
-    highlight_object_ids: list[str] = Field(default_factory=list)
     audio_url: str
 
 
@@ -106,26 +105,13 @@ class LearnerEntry(BaseModel):
     input_mode: InputMode
     transcript: str
     romanized: str | None = None
-    tapped_object_id: str | None = None
-    action_id: str | None = None
 
 
 class SceneEventEntry(BaseModel):
     kind: Literal["scene"] = "scene"
     turn: int
-    event: Literal["object_moved", "goal_done"]
-    object_id: str | None = None
-    from_zone: str | None = Field(
-        default=None, validation_alias=AliasChoices("from_zone", "from"),
-        serialization_alias="from",
-    )
-    to_zone: str | None = Field(
-        default=None, validation_alias=AliasChoices("to_zone", "to"), serialization_alias="to"
-    )
+    event: Literal["goal_done"] = "goal_done"
     goal_id: str | None = None
-
-    # Always dumps as {"from", "to"} (the payload names), however the caller serializes.
-    model_config = ConfigDict(serialize_by_alias=True)
 
 
 Entry = Annotated[
@@ -141,8 +127,6 @@ class Attempt(BaseModel):
     romanized: str | None = None
     detected_languages: list[str] = Field(default_factory=list)
     confidence: float | None = None
-    tapped_object_id: str | None = None
-    action_id: str | None = None  # the verb used on the tapped object; None = point
     created_at: str = Field(default_factory=_now)
     consumed: bool = False
     turn: int | None = None  # turn that consumed it
@@ -213,7 +197,6 @@ class Exchange(BaseModel):
     """What the character last put in front of the learner; resets every time it speaks."""
 
     posed_item_ids: list[str] = Field(default_factory=list)
-    highlighted_item_ids: list[str] = Field(default_factory=list)
     help_level: int = Field(default=0, ge=0, le=2)
     line_ids: list[str] = Field(default_factory=list)
     intent_hint: str = ""
@@ -225,28 +208,17 @@ class SceneRun(BaseModel):
     turn: int = 0
     started: bool = False
     complete: bool = False
-    zones: dict[str, str] = Field(default_factory=dict)
     goals_done: list[str] = Field(default_factory=list)
-    mood: str = NEUTRAL_MOOD
     transcript: list[Entry] = Field(default_factory=list)
     exchange: Exchange = Field(default_factory=Exchange)
-    spent: int = 0  # cash paid in this scene
-    # Fading support (soft guidance only): how often an owed word has come back un-highlighted.
-    unsupported_offers: dict[str, int] = Field(default_factory=dict)
 
 
 class Game(BaseModel):
     """The story's ledgers. Code owns every field; the GM changes them only through tools."""
 
-    wallet: int = 0
-    minutes_used: int = 0
-    difficulty: Literal["story", "immersion"] = "story"
     trust: dict[str, int] = Field(default_factory=dict)  # scene_id -> the character's trust
     clues: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
-    prices: dict[str, dict[str, int]] = Field(default_factory=dict)  # scene_id -> haggled prices
-    paid_for: dict[str, list[str]] = Field(default_factory=dict)  # scene_id -> objects paid for
-    spent: int = 0
     phrasebook: list[Phrase] = Field(default_factory=list)
     ending_id: str | None = None
 
@@ -254,7 +226,6 @@ class Game(BaseModel):
 class Journey(BaseModel):
     journey_id: str
     language: str
-    persona_id: str
     created_at: str = Field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
     vocab: dict[str, VocabRecord] = Field(default_factory=dict)
@@ -281,33 +252,13 @@ def phrase_audio_url(journey_id: str, phrase_id: str) -> str:
     return f"/api/journeys/{journey_id}/phrases/{phrase_id}/audio"
 
 
-def new_journey(
-    content: Content, journey_id: str, *, language: str, persona_id: str | None = None
-) -> Journey:
-    """A fresh journey with no scene entered yet. ``persona_id`` defaults to the first preset."""
+def new_journey(content: Content, journey_id: str, *, language: str) -> Journey:
+    """A fresh journey with no scene entered yet."""
     if not _JOURNEY_ID_RE.match(journey_id):
         raise ValueError(f"invalid journey id {journey_id!r}")
     if language not in content.languages:
         raise ValueError(f"unknown language {language!r}")
-    persona = persona_id or content.personas[0].id
-    if content.persona(persona) is None:
-        raise ValueError(f"unknown persona {persona!r}")
-    return Journey(journey_id=journey_id, language=language, persona_id=persona,
-                   game=Game(wallet=content.journey.wallet))
-
-
-def set_difficulty(journey: Journey, difficulty: str) -> None:
-    """Switch difficulty in place; it applies from the next turn."""
-    if difficulty not in DIFFICULTIES:
-        raise ValueError(f"difficulty must be one of {', '.join(DIFFICULTIES)}")
-    journey.game.difficulty = difficulty  # type: ignore[assignment]
-
-
-def set_persona(journey: Journey, content: Content, persona_id: str) -> None:
-    """Switch persona in place; it applies from the character's next reply."""
-    if content.persona(persona_id) is None:
-        raise ValueError(f"unknown persona {persona_id!r}")
-    journey.persona_id = persona_id
+    return Journey(journey_id=journey_id, language=language)
 
 
 def _journey_path(journey_id: str, root: Path) -> Path:

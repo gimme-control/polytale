@@ -11,24 +11,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from core import game, vocab
-from core.content import ACTIONS, NEUTRAL_MOOD, Anchor, Content, Language, Position, Scene
+from core.content import Anchor, Content, Language, Scene
 from core.state import ClueView, Entry, Journey, Line, NpcEntry, Phrase, Summary
 from core.summary import build_summary
 
 SceneStatus = Literal["done", "current", "next", "locked"]
-
-
-class ActionView(BaseModel):
-    id: str
-    label: str
-
-
-class ObjectView(BaseModel):
-    id: str
-    art_url: str
-    price: int | None = None
-    positions: dict[str, Position]
-    actions: list[ActionView] = Field(default_factory=list)
 
 
 class NpcView(BaseModel):
@@ -48,10 +35,8 @@ class SceneView(BaseModel):
     tagline: str
     intro: str
     background_url: str
-    mood_urls: dict[str, str]
     cover_url: str
     npc: NpcView
-    objects: list[ObjectView]
     goals: list[GoalView]
     target_count: int
 
@@ -70,13 +55,6 @@ class LanguageView(BaseModel):
     native_name: str
     romanization_label: str | None
     word_spacing: bool
-    currency_symbol: str
-
-
-class PersonaView(BaseModel):
-    id: str
-    label: str
-    blurb: str
 
 
 class SceneCard(BaseModel):
@@ -88,25 +66,12 @@ class SceneCard(BaseModel):
     status: SceneStatus
 
 
-class ClockView(BaseModel):
-    label: str
-    time: str  # "23:12"
-    minutes_left: int
-    minutes_total: int
-
-
 class GameView(BaseModel):
-    wallet: int
-    clock: ClockView
     trust: int  # the current scene's character; 0 when no scene is entered
     clues: list[ClueView]
-    difficulty: Literal["story", "immersion"]
-    prices: dict[str, int]  # current scene: object_id -> what it costs right now
 
 
 class EndingStats(BaseModel):
-    minutes_left: int
-    wallet: int
     clues: int
     words_mastered: int
     words_shaky: int
@@ -130,14 +95,10 @@ class StoryView(BaseModel):
 class PublicState(BaseModel):
     journey_id: str
     language: LanguageView
-    persona_id: str
-    personas: list[PersonaView]
     scene: SceneView | None
     started: bool
     turn: int
     transcript: list[Entry]
-    zones: dict[str, str]
-    mood: str
     progress: Progress
     scene_complete: bool
     summary: Summary | None
@@ -155,21 +116,13 @@ def story_view(content: Content) -> StoryView:
 
 
 def game_view(journey: Journey, content: Content) -> GameView:
-    state, clock = journey.game, content.journey.clock
+    state = journey.game
     scene = content.scene(journey.scene.scene_id) if journey.scene is not None else None
     known = {c.id: c for s in content.scenes.values() for c in s.clues}
     return GameView(
-        wallet=state.wallet,
-        clock=ClockView(label=clock.label, time=game.clock_time(journey, content),
-                        minutes_left=game.minutes_left(journey, content),
-                        minutes_total=clock.total_minutes),
         trust=game.trust(journey, scene) if scene is not None else 0,
         clues=[ClueView(id=c, title=known[c].title, text=known[c].text)
                for c in state.clues if c in known],
-        difficulty=state.difficulty,
-        prices={} if scene is None else {
-            o.id: price for o in scene.objects
-            if (price := game.price_of(journey, scene, o.id)) is not None},
     )
 
 
@@ -184,7 +137,6 @@ def ending_view(journey: Journey, content: Content) -> Ending | None:
         id=spec.id, title=spec.title, text=spec.text,
         art_url=art_url(content.journey.scenes[-1], spec.art) if spec.art else None,
         stats=EndingStats(
-            minutes_left=game.minutes_left(journey, content), wallet=journey.game.wallet,
             clues=len(journey.game.clues), words_mastered=states.count("mastered"),
             words_shaky=states.count("shaky"),
         ),
@@ -195,7 +147,7 @@ def language_view(language: Language) -> LanguageView:
     return LanguageView(
         locale=language.locale, name=language.name, native_name=language.native_name,
         romanization_label=language.romanization.label if language.romanization else None,
-        word_spacing=language.word_spacing, currency_symbol=language.currency_symbol,
+        word_spacing=language.word_spacing,
     )
 
 
@@ -207,16 +159,9 @@ def scene_view(scene: Scene, locale: str) -> SceneView:
     return SceneView(
         id=scene.id, name=scene.name, tagline=scene.tagline, intro=scene.intro,
         background_url=art_url(scene.id, scene.art.background),
-        mood_urls={mood: art_url(scene.id, rel) for mood, rel in scene.art.moods.items()},
         cover_url=art_url(scene.id, scene.art.cover),
         npc=NpcView(name=scene.npc.display_name(locale), role=scene.npc.role,
                     anchor=scene.npc.anchor),
-        objects=[
-            ObjectView(id=o.id, art_url=art_url(scene.id, o.art), price=o.price,
-                       positions=o.positions,
-                       actions=[ActionView(id=a, label=ACTIONS[a]) for a in o.actions])
-            for o in scene.objects
-        ],
         goals=[GoalView(id=g.id, label=g.label) for g in scene.goals],
         target_count=len(scene.targets),
     )
@@ -268,14 +213,10 @@ def public_state(journey: Journey, content: Content) -> PublicState:
     return PublicState(
         journey_id=journey.journey_id,
         language=language_view(language),
-        persona_id=journey.persona_id,
-        personas=[PersonaView(id=p.id, label=p.label, blurb=p.blurb) for p in content.personas],
         scene=scene_view(content.scene(run.scene_id), language.locale) if run else None,
         started=bool(run and run.started),
         turn=run.turn if run else 0,
         transcript=list(run.transcript) if run else [],
-        zones=dict(run.zones) if run else {},
-        mood=run.mood if run else NEUTRAL_MOOD,
         progress=progress_view(journey, content),
         scene_complete=bool(run and run.complete),
         summary=build_summary(journey, content) if run and run.complete else None,

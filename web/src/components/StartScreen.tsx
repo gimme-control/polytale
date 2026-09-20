@@ -1,24 +1,19 @@
-// Title: the story is the hero. Its art, its name, its premise, how hard you want it,
-// and one button.
+// Title: the story is the hero. Its art, its name, its premise, the language you want
+// to need it in, and one button.
 
 import { useGame } from "../store";
 import { Picture } from "./Picture";
-import type { Difficulty } from "../lib/types";
-
-const DIFFICULTIES: { id: Difficulty; label: string; blurb: string }[] = [
-  { id: "story", label: "Story", blurb: "The narrator keeps you oriented." },
-  { id: "immersion", label: "Immersion", blurb: "You're on your own." },
-];
 
 export function StartScreen() {
   const catalog = useGame((s) => s.catalog);
   const story = useGame((s) => s.story ?? s.catalog?.story ?? null);
   const language = useGame((s) => s.language ?? s.catalog?.language ?? null);
+  const languages = useGame((s) => s.catalog?.languages ?? []);
+  const chosen = useGame((s) => s.chosenLanguage ?? s.language?.locale ?? s.catalog?.language?.locale ?? null);
+  const chooseLanguage = useGame((s) => s.chooseLanguage);
   const starting = useGame((s) => s.starting);
   const error = useGame((s) => s.startError);
   const begin = useGame((s) => s.begin);
-  const difficulty = useGame((s) => s.chosenDifficulty);
-  const chooseDifficulty = useGame((s) => s.chooseDifficulty);
   const art = story?.art_url || catalog?.scenes[0]?.cover_url;
 
   return (
@@ -37,35 +32,49 @@ export function StartScreen() {
         <p data-testid="premise" className="story over-art m-0 mt-4 max-w-[560px] text-[17px] leading-[1.55] text-ink/90 sm:mt-5 sm:text-[19px]">
           {story?.premise ?? "Learn a language by needing it."}
         </p>
-        {language && (
-          <p data-testid="language-line" className="over-art m-0 mt-4 text-[13px] text-ink-2">
-            Learn a language by needing it. {language.name} ·{" "}
-            <span lang={language.locale} className="target font-normal">
-              {language.native_name}
-            </span>
-          </p>
-        )}
+        <p data-testid="language-line" className="over-art m-0 mt-4 text-[13px] text-ink-2">
+          Learn a language by needing it.
+          {/* Without the catalog's list there is no picker, so name the one language here. */}
+          {languages.length === 0 && language && (
+            <>
+              {" "}
+              {language.name} ·{" "}
+              <span lang={language.locale} className="target font-normal">
+                {language.native_name}
+              </span>
+            </>
+          )}
+        </p>
 
-        <div role="radiogroup" aria-label="Difficulty" data-testid="difficulty-choice" className="mt-7 flex max-w-[520px] gap-2 sm:mt-9">
-          {DIFFICULTIES.map((d) => {
-            const on = d.id === difficulty;
-            return (
-              <button
-                key={d.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                data-testid={`start-difficulty-${d.id}`}
-                data-active={on ? "1" : "0"}
-                onClick={() => chooseDifficulty(d.id)}
-                className={`flex-1 rounded-[10px] border bg-glass px-4 py-3 text-left backdrop-blur-md transition-colors duration-150 ${on ? "border-ink/70" : "border-hair hover:border-hair-2"}`}
-              >
-                <span className={`block text-[14px] font-semibold ${on ? "text-ink" : "text-ink-2"}`}>{d.label}</span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-ink-3">{d.blurb}</span>
-              </button>
-            );
-          })}
-        </div>
+        {languages.length > 0 && (
+          <div className="mt-7 max-w-[560px] sm:mt-9">
+            <p className="over-art m-0 text-[13px] text-ink-2">Which language do you want to need?</p>
+            <div role="radiogroup" aria-label="Language" data-testid="language-choice" className="mt-2.5 flex flex-wrap gap-2">
+              {languages.map((l) => {
+                const on = l.locale === chosen;
+                return (
+                  <button
+                    key={l.locale}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    aria-label={l.name}
+                    data-testid={`start-language-${l.locale}`}
+                    data-locale={l.locale}
+                    data-active={on ? "1" : "0"}
+                    onClick={() => chooseLanguage(l.locale)}
+                    className={`rounded-[10px] border bg-glass px-4 py-2.5 text-left backdrop-blur-md transition-colors duration-150 ${on ? "border-ink/70" : "border-hair hover:border-hair-2"}`}
+                  >
+                    <span lang={l.locale} className={`target block text-[18px] leading-tight ${on ? "text-ink" : "text-ink-2"}`}>
+                      {l.native_name}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] leading-snug text-ink-3">{l.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex flex-col gap-4 sm:mt-6 sm:flex-row sm:items-center sm:gap-6">
           <button

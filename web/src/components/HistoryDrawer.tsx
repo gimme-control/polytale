@@ -71,7 +71,7 @@ export function HistoryDrawer({ onClose }: { onClose: () => void }) {
             if (e.kind === "learner") {
               return (
                 <div key={i} data-kind="learner" className="flex items-center justify-end gap-1.5 border-t border-hair pt-4 text-[14px] text-ink-2 first:border-0 first:pt-0">
-                  <Echo entry={e} scene={scene} locale={language.locale} />
+                  <Echo entry={e} locale={language.locale} />
                 </div>
               );
             }

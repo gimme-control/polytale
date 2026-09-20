@@ -1,7 +1,7 @@
-"""Vocabulary rules: appearances, results, presentation guidance, the highlight gate, help.
+"""Vocabulary rules: appearances, results, presentation guidance, help.
 
-Deterministic. Outcomes are stamped from the server's exchange ledger (what was highlighted,
-how much help the learner asked for), never from anything the model claims.
+Deterministic. Outcomes are stamped from the server's exchange ledger (how much help the
+learner asked for, what they looked up), never from anything the model claims.
 """
 
 from __future__ import annotations
@@ -10,21 +10,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from core.content import Content, Scene
 from core.state import Exchange, Journey, Outcome, Result, VocabRecord
 
 MAX_HELP_LEVEL = 2
 HELP_LABELS = {1: "Say it again, slowly", 2: "What do they want?"}
 
-MAX_UNSUPPORTED_OFFERS = 2
-
-Presentation = Literal["introduce", "highlight", "no_highlight", "no_support", "theirs"]
+Presentation = Literal["introduce", "support", "unaided", "known", "theirs"]
 GUIDANCE: dict[Presentation, str] = {
     "theirs": "THEIR line, never yours: do not say it for them; when they say it, just answer",
-    "introduce": "introduce: say it, highlight it, act it out",
-    "highlight": "use it with a highlight",
-    "no_highlight": "use it WITHOUT a highlight",
-    "no_support": "use it with NO support",
+    "introduce": "introduce: say it, and make what it means unmistakable from the moment",
+    "support": "say it again, and make the meaning plain: repeat, gesture, act it out",
+    "unaided": "use it plainly, with no extra help; let them carry it",
+    "known": "they have this: just use it, like anyone would",
 }
 
 
@@ -37,7 +34,6 @@ class Help(BaseModel):
     level: int
     kind: Literal["again", "hint"]
     line_ids: list[str] = Field(default_factory=list)
-    highlight_object_ids: list[str] = Field(default_factory=list)
     hint: str | None = None
 
 
@@ -55,8 +51,7 @@ def outcome_for(exchange: Exchange, item_id: str, understood: bool) -> Outcome:
         return "missed"
     if exchange.help_level >= 2:
         return "with_hint"
-    if (exchange.help_level == 1 or item_id in exchange.highlighted_item_ids
-            or item_id in exchange.phrasebook_item_ids):
+    if exchange.help_level == 1 or item_id in exchange.phrasebook_item_ids:
         return "with_help"
     return "first_try"
 
@@ -98,37 +93,11 @@ def presentation(
     if record is None or record.state == "not_encountered":
         return "introduce"
     if record.state == "mastered":
-        return "no_support"
+        return "known"
     helped_here = any(
         r.scene_id == scene_id and r.outcome == "with_help" for r in record.results
     )
-    return "no_highlight" if helped_here else "highlight"
-
-
-def owed_items(journey: Journey, scene: Scene) -> list[str]:
-    """Object words still owed an unsupported pass in the scene being played.
-
-    Owed: the learner got it here only with a highlight or help (no first_try yet this scene).
-    The debt lapses once the word has come back un-highlighted ``MAX_UNSUPPORTED_OFFERS`` times,
-    so the scene can never be held hostage.
-    """
-    run = journey.scene
-    if run is None:
-        return []
-    owed: list[str] = []
-    for item_id in dict.fromkeys(o.item_id for o in scene.objects if o.item_id in scene.targets):
-        record = journey.vocab.get(item_id)
-        here = [r.outcome for r in record.results if r.scene_id == scene.id] if record else []
-        helped = any(o in ("with_help", "with_hint") for o in here)
-        if (helped and "first_try" not in here
-                and run.unsupported_offers.get(item_id, 0) < MAX_UNSUPPORTED_OFFERS):
-            owed.append(item_id)
-    return owed
-
-
-def mastered_items(journey: Journey) -> frozenset[str]:
-    """The highlight gate's input: items this learner has mastered (never highlighted)."""
-    return frozenset(i for i, record in journey.vocab.items() if record.state == "mastered")
+    return "unaided" if helped_here else "support"
 
 
 def next_help(exchange: Exchange) -> NextHelp | None:
@@ -136,24 +105,18 @@ def next_help(exchange: Exchange) -> NextHelp | None:
     return NextHelp(level=level, label=HELP_LABELS[level]) if level <= MAX_HELP_LEVEL else None
 
 
-def request_help(journey: Journey, content: Content) -> Help:
+def request_help(journey: Journey) -> Help:
     """Raise help by exactly one level for this exchange (in place) and say what to show.
 
-    Level 1 replays the character's last lines slowly and highlights what they posed; level 2
-    reveals the intent hint. A press at the maximum returns level 2 again.
+    Level 1 replays the character's last lines slowly; level 2 reveals the intent hint. A press
+    at the maximum returns level 2 again.
     """
     run = journey.scene
     if run is None or not run.started or run.complete:
         raise ValueError("no scene in play")
     exchange = run.exchange
     exchange.help_level = min(MAX_HELP_LEVEL, exchange.help_level + 1)
-    scene = content.scene(run.scene_id)
-    highlight = [
-        o.id for o in scene.objects
-        if o.item_id in exchange.posed_item_ids and run.zones.get(o.id) != "gone"
-    ]
     if exchange.help_level == 1:
-        return Help(level=1, kind="again", line_ids=list(exchange.line_ids),
-                    highlight_object_ids=highlight)
+        return Help(level=1, kind="again", line_ids=list(exchange.line_ids))
     return Help(level=2, kind="hint", line_ids=list(exchange.line_ids),
-                highlight_object_ids=highlight, hint=exchange.intent_hint or None)
+                hint=exchange.intent_hint or None)

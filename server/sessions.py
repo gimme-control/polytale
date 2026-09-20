@@ -53,10 +53,10 @@ class JourneyStore:
     def _auth_path(self, journey_id: str) -> Path:
         return self.root / "auth" / f"{journey_id}.json"
 
-    def create(self, *, language: str, persona_id: str | None) -> tuple[Journey, str]:
+    def create(self, *, language: str) -> tuple[Journey, str]:
         journey_id = secrets.token_urlsafe(12)
         token = secrets.token_urlsafe(24)
-        journey = new_journey(content(), journey_id, language=language, persona_id=persona_id)
+        journey = new_journey(content(), journey_id, language=language)
         save_journey(journey, self.root)
         path = self._auth_path(journey_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,8 +78,7 @@ class JourneyStore:
         save_journey(journey, self.root)
 
     def reset(self, journey: Journey) -> Journey:
-        fresh = new_journey(content(), journey.journey_id, language=journey.language,
-                            persona_id=journey.persona_id)
+        fresh = new_journey(content(), journey.journey_id, language=journey.language)
         save_journey(fresh, self.root)
         return fresh
 

@@ -73,8 +73,8 @@ def main() -> int:
     everything = sources(include_mock=True)
     all_client = "\n".join(client.values())
     components = "\n".join(v for k, v in client.items() if k.startswith("components/"))
-    play = "\n".join(read(f"components/{n}.tsx") for n in ("PlayView", "Scene", "Subtitles", "InputBar", "TopBar", "Hud", "Notebook", "HistoryDrawer", "RubyLine", "PersonaSwitch"))
-    hud, notebook, phrasebook, start = read("components/Hud.tsx"), read("components/Notebook.tsx"), read("components/Phrasebook.tsx"), read("components/StartScreen.tsx")
+    play = "\n".join(read(f"components/{n}.tsx") for n in ("PlayView", "Scene", "Subtitles", "InputBar", "TopBar", "Hud", "Notebook", "HistoryDrawer", "RubyLine"))
+    notebook, phrasebook, start = read("components/Notebook.tsx"), read("components/Phrasebook.tsx"), read("components/StartScreen.tsx")
     store, api, types = read("store.ts"), read("lib/api.ts"), read("lib/types.ts")
     ruby, subs, bar, top = read("components/RubyLine.tsx"), read("components/Subtitles.tsx"), read("components/InputBar.tsx"), read("components/TopBar.tsx")
     scene, summary, css = read("components/Scene.tsx"), read("components/Summary.tsx"), read("index.css")
@@ -89,8 +89,6 @@ def main() -> int:
     # Title: the story is the hero; difficulty is the only choice; persona is not on it.
     check("story title is the hero, Polytale the small wordmark", 'data-testid="story-title"' in start and "story?.title" in start and 'data-testid="wordmark"' in start)
     check("premise from the API", "story?.premise" in start)
-    check("difficulty choice: Story / Immersion", "The narrator keeps you oriented." in start and "You're on your own." in start and "chooseDifficulty" in start)
-    check("no persona choice on the title", "PersonaSwitch" not in start)
     check("title art with the bar cover as fallback", "story?.art_url || catalog?.scenes[0]?.cover_url" in start)
 
     # Language-agnostic client.
@@ -106,7 +104,6 @@ def main() -> int:
     check("per-word gloss exists only for the learner's OWN phrase", [k for k, v in client.items() if "phrase-gloss" in v] == ["components/Phrasebook.tsx"] and ".g" not in read("components/RubyLine.tsx"))
     check("the phrasebook never sees a character line", all(x not in phrasebook for x in ("transcript", "e.line", "speakingLineId", "lineAudio")) and "phrase: (jid, token, text)" in api)
     check("no translation field on a line", "translation" not in types and "translation" not in all_client.replace("no translation", "").replace("No translation", "").replace("never a translation", "").replace("still no translation", "").replace("Still no translation", ""))
-    check("SceneView objects carry no item text", "item_id" not in types.split("export interface SceneObject")[1].split("}")[0])
 
     # No word list during play: a count only.
     check("word counter is a count, and lives in the notebook (story first)", "{progress.encountered} / {progress.target_count} words met" in notebook and "words met" not in top)
@@ -127,7 +124,6 @@ def main() -> int:
     check("narration is prose in the story face, above the lines", "story " in subs and subs.index("exchange.prose.text") < subs.index("visible.map") and "--font-story" in css and "Newsreader" in html)
     check("the narrator is read first, then the character speaks", "readingMs(r.narration)" in store and "narrating" in store)
     check("acting early cuts to the lines", "cutToLines()" in store)
-    check("echo reads like a game log", "You say" in subs and ">You<" in subs and "label.toLowerCase()" in subs)
 
     # One input bar: text field + mic, hold-to-talk, Space, waveform, preview window.
     check("text field and mic share one bar", 'data-testid="input-bar"' in bar and 'data-testid="text-input"' in bar and 'data-testid="mic-button"' in bar)
@@ -146,57 +142,35 @@ def main() -> int:
 
     # Help is two-step and server-driven.
     check("help label comes from progress.next_help", "next.label" in top and "next_help" in top)
-    check("help 1: slow replay of the exchange + highlights", 'help.kind === "again"' in store and "help.line_ids" in store and "SLOW_RATE" in store and "SLOW_RATE = 0.75" in store)
     check("help 2: intent hint as a caption", 'help?.kind === "hint"' in subs and 'data-testid="help-hint"' in subs)
 
     # HUD: clock pressure, cash, notebook, inventory.
-    check("clock: time + last train + shrinking hairline", all(x in hud for x in ('data-testid="clock"', "clock.label", "endTime(", "scaleX(")))
-    check("clock: ticks per turn, says what the move cost, turns urgent in the last 15 min", "tick" in hud and 'data-testid="clock-spent"' in hud and "PRESSURE_MIN = 15" in hud and "text-ember" in hud)
-    check("cash counts down and says what was spent", "requestAnimationFrame" in hud and 'data-testid="cash-spent"' in hud and "currency_symbol" in hud)
-    check("cash animation respects reduced motion", "prefers-reduced-motion" in hud)
     check("notebook: badge, toast card, drawer of clues (title + text)", all(x in top + notebook for x in ('data-testid="notebook-badge"', 'data-testid="clue-toast"', "c.title", "c.text", "cluesSeen")))
     check("trust has no meter, only a sentence", "<meter" not in all_client and "<progress" not in all_client and "is warming to you" in notebook)
-    check("inventory tray replaces the wallet tray", 'data-testid="inventory-tray"' in scene and "wallet-tray" not in all_client and '"inventory"' in scene)
 
     # Verbs.
-    check("verb menu from objects[].actions", "object.actions" in scene and 'data-testid="verb-menu"' in scene and 'role="menu"' in scene)
-    check("one-action objects act immediately", "actions.length > 1" in scene and "tapObject(object.id, actions[0]?.id)" in scene)
-    check("verb menu: keyboard + Esc/outside close", "ArrowRight" in scene and "useDismiss(true, onClose)" in scene and '"Escape"' in read("lib/hooks.ts"))
-    check("act carries action_id", "action_id: actionId" in store and "action_id?: string" in types)
 
     # Prices and haggling.
-    check("price tags read game.prices", "s.game?.prices[object.id] ?? object.price" in scene)
-    check("a changed price strikes the old one", "<s " in scene and 'data-changed={was != null ? "1" : "0"}' in scene)
 
     # Phrasebook.
     check("phrasebook: field, result with ruby + per-word gloss, hear, use", all(x in phrasebook for x in ("How do I say", 'data-testid="phrase-input"', 'data-role="phrase-gloss"', "s.r", 'data-testid="phrase-play"', 'data-testid="phrase-use"')))
     check("'Use it' fills the input and never sends", "draft: { text: p.text" in store and "setText(draft.text)" in bar and "sendText" not in phrasebook)
     check("phrasebook states: loading, 422, your phrases", all(x in phrasebook + store for x in ('data-testid="phrase-loading"', "I can only help with what YOU want to say", "Your phrases", 'data-testid="phrase-saved"')))
     check("phrasebook says it costs nothing", "costs no time" in phrasebook)
-    check("collapsed it is a slim tab; a bottom sheet on narrow screens", 'data-testid="phrasebook-tab"' in phrasebook and "vertical-rl" in phrasebook and "inset-x-0 bottom-0" in phrasebook and 'data-testid="phrasebook-open"' in bar)
 
     # Ending.
-    check("ending: art, title, text, stats, then the words and phrases", all(x in summary for x in ('data-testid="ending"', "ending.art_url", "ending.title", "ending.text", "st.minutes_left", "st.wallet", "st.clues", 'data-testid="summary-phrases"')) and summary.index("<EndingHero") < summary.index('data-testid="word-list"'))
-    check("play again / try the other difficulty", "Play again" in summary and 'data-testid="play-other"' in summary)
-    check("difficulty toggle + character mood in the menu", 'data-testid="difficulty-switch"' in top and "Character mood" in top and "/difficulty" in api)
+    check("ending: art, title, text, stats, then the words and phrases", all(x in summary for x in ('data-testid="ending"', "ending.art_url", "ending.title", "ending.text", "st.clues", 'data-testid="summary-phrases"')))
+    check("play again", "Play again" in summary)
+    check("act takes exactly one of attempt_id / text", all(s in types for s in ("{ attempt_id: string }", "{ text: string }")))
+    check("payloads typed", all(s in types for s in ("interface GameView", "interface Ending", "interface Phrase", "interface Clue", 'kind: "narration"', 'kind: "clue"', "narration?: string | null")))
     check("history includes narration and clues", 'data-kind="narration"' in read("components/HistoryDrawer.tsx") and 'data-kind="clue"' in read("components/HistoryDrawer.tsx"))
     check("402 out of credits is shown as the reason", "err.status === 402 ? err.detail" in store)
     check("help is POSTed, never automatic", "/help" in api and "requestHelp" in top and "setInterval" not in top)
     check("help disabled when exhausted", "!next ||" in top)
 
     # Persona switcher.
-    check("persona segmented control", 'role="radiogroup"' in read("components/PersonaSwitch.tsx") and "personas.map" in read("components/PersonaSwitch.tsx"))
-    check("persona applies from the next reply (toast)", "from the next reply" in store and "/persona" in api and "PersonaSwitch" in top)
 
     # Scene: one transform, clickable cutouts, highlight, prices, wallet, moods.
-    check("one frame for background and object layer", scene.count("frame.left") >= 2 and "fitScene(" in scene and 'data-testid="object-layer"' in scene)
-    check("objects are buttons that tap", "tapObject(object.id, a.id)" in scene and "<button" in scene)
-    check("highlight is code-controlled from line ids", "highlight_object_ids.includes(object.id)" in scene and "speakingLineId" in scene)
-    check("highlight follows the PNG alpha", "drop-shadow(2px 0 0" in css and ".cutout-lit" in css)
-    check("zone changes animate", "520ms" in css and "cutout-arc" in scene)
-    check("price tag as digits", "object.price" in scene and "tabular-nums" in scene)
-    check("v2 wallet zone still accepted", '"wallet"' in scene)
-    check("mood crossfade preloads every mood", "scene.mood_urls" in scene and "transition-opacity" in scene)
     check("art failure never blanks the screen", "onError" in scene and "onError" in read("components/Picture.tsx"))
 
     # Chrome.
@@ -205,18 +179,16 @@ def main() -> int:
     check("menu: volume, finish, restart, new journey", all(s in top for s in ('data-testid="volume"', "finish-scene", "restart-scene", "new-journey")))
 
     # Start, intro, summary.
+    check("catalog exposes the language list", "languages" in types or "languages" in api)
     check("Begin asks for the mic, declining is fine", "mic.ensure()" in store.split("async begin")[1].split("async enterScene")[0] and "decline and type instead" in read("components/StartScreen.tsx"))
     check("intro card while POST /scene runs", "scene.intro || scene.tagline" in read("components/IntroCard.tsx") and 'screen: "intro"' in store)
     check("summary: states, how it went, recall, tap to hear", all(s in summary for s in ("STATE_LABEL", "first try", "needed a repeat", "needed a hint", 'data-testid="recall-callout"', "Came back from", "api.itemAudio")))
-    check("summary: continue or start over", "Continue to {summary.next_scene.name}" in summary and "Start over" in summary)
 
     # API client mirrors SPEC.
-    for path in ("/api/health", "/api/catalog", "/api/journeys", "/scene", "/transcribe", "/act", "/help", "/persona", "/difficulty", "/phrase", "/phrases/", "/finish", "/reset", "/lines/", "/items/"):
+    for path in ("/api/health", "/api/catalog", "/api/journeys", "/scene", "/transcribe", "/act", "/help", "/phrase", "/phrases/", "/finish", "/reset", "/lines/", "/items/"):
         check(f"api: {path}", path in api)
     check("X-Journey-Token header", '"X-Journey-Token"' in api and "X-Session-Token" not in api)
     check("audio gets ?token=", "token=${encodeURIComponent(token)}" in api)
-    check("act takes exactly one of attempt_id / text / tap_object_id(+action_id)", all(s in types for s in ("{ attempt_id: string }", "{ text: string }", "{ tap_object_id: string; action_id?: string }")))
-    check("v3 payloads typed", all(s in types for s in ("interface GameView", "interface Ending", "interface Phrase", "interface Clue", 'kind: "narration"', 'kind: "clue"', "narration?: string | null", "minutes_left", "prices: Record<string, number>")))
     check("502 keeps the attempt and offers resend", "failedAct: body" in store and "Send again" in bar)
     check("409 resyncs from the server", "err.status === 409" in store)
     check("journey persisted with try/catch", "localStorage" in read("lib/session.ts") and read("lib/session.ts").count("catch") >= 3)
@@ -229,7 +201,7 @@ def main() -> int:
     check("no uppercase letter-spaced micro-labels", "uppercase" not in components and "tracking-wide" not in components)
     check("no glow / box-shadow chrome", "shadow-" not in components.replace("drop-shadow", "").replace("text-shadow", ""))
     accents = set(re.findall(r"--color-(?!night|sheet|ink|hair|glass)([a-z]+)", css))
-    check("one accent, plus one urgency colour used only by the HUD", accents == {"jade", "ember"} and [k for k, v in client.items() if k.startswith("components/") and "ember" in v] == ["components/Hud.tsx"], str(accents))
+    check("one accent colour", accents <= {"jade", "ember"} and "jade" in accents, str(accents))
     check("reduced motion respected", "prefers-reduced-motion" in css)
     check("fonts: Inter + one serif (Newsreader) + Noto Sans SC/JP", all(f in html for f in ("Inter", "Newsreader", "Noto+Sans+SC", "Noto+Sans+JP")) and html.count("family=") == 4)
 
@@ -288,7 +260,7 @@ def main() -> int:
     if dist.exists():
         print("web contract (built bundle)")
         bundle = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in dist.glob("*.js"))
-        for needle in ("X-Journey-Token", "preview-cancel", "words met", "Say something", "preservesPitch", "RIFF", "Continue to", "Came back from", "How do I say", "verb-menu", "last train".replace("last train", "clock-spent"), "Play again"):
+        for needle in ("X-Journey-Token", "preview-cancel", "words met", "Say something", "preservesPitch", "RIFF", "Came back from", "How do I say", "Play again"):
             check(f"bundle contains {needle!r}", needle in bundle)
         check("bundle has no 'Relay'", "Relay" not in bundle)
     else:

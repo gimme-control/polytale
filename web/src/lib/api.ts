@@ -6,7 +6,6 @@ import type {
   Catalog,
   CreateJourneyResponse,
   Health,
-  Difficulty,
   HelpResponse,
   Phrase,
   PublicState,
@@ -31,15 +30,14 @@ export interface Api {
   readonly mock: boolean;
   health(): Promise<Health>;
   catalog(): Promise<Catalog>;
-  createJourney(body: { persona_id?: string; language?: string }): Promise<CreateJourneyResponse>;
+  /** The learner picks the language on the title screen; the story is the same one. */
+  createJourney(body: { language?: string }): Promise<CreateJourneyResponse>;
   getState(jid: string, token: string): Promise<PublicState>;
   /** Enter the next (or named) scene and run the opening turn. */
   enterScene(jid: string, token: string, body: SceneBody): Promise<TurnResult>;
   transcribe(jid: string, token: string, audio: Blob): Promise<Transcription>;
   act(jid: string, token: string, body: ActBody): Promise<TurnResult>;
   help(jid: string, token: string): Promise<HelpResponse>;
-  persona(jid: string, token: string, personaId: string): Promise<PublicState>;
-  difficulty(jid: string, token: string, difficulty: Difficulty): Promise<PublicState>;
   /** "How do I say...?": the learner's own support-language sentence, never a character line. */
   phrase(jid: string, token: string, text: string): Promise<Phrase>;
   phraseAudio(jid: string, token: string, phraseId: string, audioUrl?: string): Promise<string>;
@@ -110,8 +108,6 @@ export function createHttpApi(): Api {
     },
     act: (jid, token, body) => request("POST", `${j(jid)}/act`, { token, json: body, timeoutMs: 90_000 }),
     help: (jid, token) => request("POST", `${j(jid)}/help`, { token, json: {} }),
-    persona: (jid, token, persona_id) => request("POST", `${j(jid)}/persona`, { token, json: { persona_id } }),
-    difficulty: (jid, token, difficulty) => request("POST", `${j(jid)}/difficulty`, { token, json: { difficulty } }),
     phrase: (jid, token, text) => request("POST", `${j(jid)}/phrase`, { token, json: { text }, timeoutMs: 20_000 }),
     phraseAudio: async (jid, token, phraseId, audioUrl) =>
       withToken(audioUrl || `${j(jid)}/phrases/${encodeURIComponent(phraseId)}/audio`, token),

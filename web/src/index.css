@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-/* Exactly two layout breakpoints: `lg` (1024px, Tailwind's own) splits desktop from
-   phone, and `short` is a phone on its side. Nothing in the client reads the window. */
-@custom-variant short (@media (max-height: 520px) and (orientation: landscape));
-@custom-variant coarse (@media (pointer: coarse));
-
 @theme {
   --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-story: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
@@ -13,7 +8,6 @@
 
   --color-night: #0b0c0c;
   --color-sheet: #101111;
-  --color-panel: #131414;
   --color-ink: #f1eee8;
   --color-ink-2: rgb(241 238 232 / 0.66);
   --color-ink-3: rgb(241 238 232 / 0.42);
@@ -21,26 +15,14 @@
   --color-hair-2: rgb(241 238 232 / 0.26);
   --color-glass: rgb(13 14 14 / 0.72);
   --color-jade: #9fc3b1;
-  /* Urgency only: the clock's last minutes and money you do not have. */
-  --color-ember: #e0a583;
 
   --ease-out: cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 
-:root {
-  /* The whole motion budget. Nothing else moves. */
-  --t-fade: 150ms;
-  --t-art: 300ms;
-  --t-slide: 450ms;
-  --t-flash: 600ms;
-}
-
 html,
-body {
-  height: 100%;
-}
+body,
 #root {
-  height: 100dvh;
+  height: 100%;
 }
 
 body {
@@ -59,12 +41,9 @@ body {
   background: rgb(159 195 177 / 0.32);
 }
 
-@layer base {
-  /* Layered, so a field that lives in a bordered wrapper can opt out with outline-none. */
-  :focus-visible {
-    outline: 1.5px solid var(--color-jade);
-    outline-offset: 2px;
-  }
+:focus-visible {
+  outline: 1.5px solid var(--color-jade);
+  outline-offset: 2px;
 }
 
 button {
@@ -76,574 +55,194 @@ button:disabled {
 }
 
 @layer components {
-  /* ---- Play layout: fixed regions. Every size below is a constant of the viewport,
-     never of the content, so nothing can push anything else. */
-  .play {
-    --side: 360px;
-    --dlg-h: 200px;
-    --narr-h: 72px;
-    --line-h: 76px;
-    --ln-0: 32px;
-    --ln-1: 25px;
-    --ln-2: 19px;
-    --input-h: 78px;
-    --gap: 12px;
-    position: relative;
-    display: grid;
-    width: 100%;
-    max-width: 1760px;
-    height: 100dvh;
-    margin-inline: auto;
-    overflow: hidden;
-    grid-template-columns: minmax(0, 1fr) var(--side);
-    grid-template-rows: 52px minmax(0, 1fr);
-    grid-template-areas:
-      "top top"
-      "stage side";
-  }
-  .play-top {
-    grid-area: top;
-    min-width: 0;
-  }
-  .play-stage {
-    grid-area: stage;
-    container-type: size;
-    display: grid;
-    place-content: center;
-    min-width: 0;
-    min-height: 0;
-    padding: 4px 20px 18px;
-  }
-  /* Scene, dialogue and input share one width: the widest 16:9 picture that still
-     leaves the two fixed rows beneath it. */
-  .play-stack {
-    display: grid;
-    width: max(320px, min(100cqw, calc((100cqh - var(--dlg-h) - var(--input-h) - 2 * var(--gap)) * 16 / 9)));
-    grid-template-rows: auto var(--dlg-h) var(--input-h);
-    row-gap: var(--gap);
-  }
-  .play-scene {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    border-radius: 10px;
-    background: #141515;
-    isolation: isolate;
-  }
-  .play-dialogue {
-    display: grid;
-    height: var(--dlg-h);
-    min-width: 0;
-    overflow: hidden;
-    padding: 12px 16px;
-    row-gap: 4px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 20px var(--narr-h) var(--line-h);
-    grid-template-areas:
-      "label label"
-      "narr narr"
-      "line ctl";
-    border: 1px solid var(--color-hair);
-    border-radius: 10px;
-    background: var(--color-panel);
-  }
-  .dlg-label {
-    grid-area: label;
-  }
-  .dlg-narr {
-    grid-area: narr;
-    height: var(--narr-h);
-    overflow: hidden;
-  }
-  .dlg-line {
-    grid-area: line;
-    height: var(--line-h);
-    overflow: hidden;
-  }
-  .dlg-ctl {
-    grid-area: ctl;
-    align-self: end;
-  }
-  .play-input {
-    position: relative;
-    display: grid;
-    height: var(--input-h);
-    min-width: 0;
-    column-gap: 10px;
-    row-gap: 6px;
-    grid-template-columns: auto minmax(0, 1fr) 176px;
-    grid-template-rows: 52px 20px;
-    grid-template-areas:
-      "inv field help"
-      ". helper .";
-  }
-  .in-inv {
-    grid-area: inv;
-  }
-  .in-field {
-    grid-area: field;
-  }
-  .in-help {
-    grid-area: help;
-  }
-  .in-helper {
-    grid-area: helper;
-  }
-  .play-side {
-    grid-area: side;
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    padding: 4px 20px 18px 0;
-    row-gap: var(--gap);
-    grid-template-rows: minmax(0, 0.62fr) minmax(0, 1.5fr) minmax(0, 1.25fr);
-  }
-  .side-section {
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-    overflow: hidden;
-    border: 1px solid var(--color-hair);
-    border-radius: 10px;
-    background: var(--color-panel);
-  }
-  .play-tabs,
-  .play-sheet {
-    display: none;
-  }
+/* Target-language text: the lang attribute picks locale-appropriate glyph forms. */
+.target {
+  font-family: var(--font-target);
+  font-weight: 500;
+}
+.target:lang(ja) {
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", var(--font-target);
+}
 
-  @media (min-width: 1024px) and (max-width: 1199.98px) {
-    .play {
-      --side: 320px;
-    }
-    .play-stage {
-      padding-inline: 16px;
-    }
-    .play-side {
-      padding-right: 16px;
-    }
-    .play-input {
-      grid-template-columns: auto minmax(0, 1fr) 148px;
-    }
-  }
-  @media (min-width: 1024px) and (min-height: 1000px) {
-    .play {
-      --dlg-h: 232px;
-      --narr-h: 78px;
-      --line-h: 98px;
-      --ln-0: 36px;
-      --ln-1: 28px;
-      --ln-2: 22px;
-    }
-  }
+/* ---- Ruby: romanization sits over each word; the gap between words shows where
+   one ends and the next begins. Real <ruby>, laid out as a column so the
+   romanization never collides with a neighbour. */
+.ruby-line {
+  display: block;
+  line-height: 1.15;
+  /* Even line lengths, so a wrapped subtitle never strands one word. */
+  text-wrap: balance;
+}
+.ruby-line ruby,
+.ruby-line .ruby-col {
+  display: inline-flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  vertical-align: baseline;
+  margin-inline: 0.14em;
+}
+.ruby-line .ruby-col.is-punct {
+  margin-inline: 0;
+}
+.ruby-line rt,
+.ruby-line .ruby-pad {
+  display: block;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: 0.44em;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--color-ink-2);
+  padding-bottom: 0.22em;
+  white-space: nowrap;
+  text-align: center;
+  user-select: none;
+}
+.ruby-line.is-dim rt {
+  color: inherit;
+}
 
-  /* Phone: one column, the same regions, plus a tab bar. The sheet is the only overlay
-     and lies over the dialogue and input rows, so the picture stays in view. */
-  @media (max-width: 1023.98px) {
-    .play {
-      --narr-h: 66px;
-      --line-h: 104px;
-      --ln-0: 28px;
-      --ln-1: 23px;
-      --ln-2: 19px;
-      max-width: none;
-      padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 48px auto minmax(0, 1fr) auto calc(56px + env(safe-area-inset-bottom));
-      grid-template-areas:
-        "top"
-        "scene"
-        "dialogue"
-        "input"
-        "tabs";
-    }
-    .play-stage,
-    .play-stack {
-      display: contents;
-    }
-    .play-scene {
-      grid-area: scene;
-      border-radius: 0;
-    }
-    .play-dialogue {
-      grid-area: dialogue;
-      height: auto;
-      min-height: 0;
-      align-content: start;
-      padding: 10px 16px 0;
-      row-gap: 6px;
-      border: 0;
-      border-radius: 0;
-      background: transparent;
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 22px var(--narr-h) var(--line-h) 44px;
-      grid-template-areas:
-        "label"
-        "narr"
-        "line"
-        "ctl";
-    }
-    .dlg-ctl {
-      align-self: center;
-    }
-    .play-input {
-      grid-area: input;
-      height: auto;
-      padding: 8px 12px 6px;
-      column-gap: 8px;
-      row-gap: 8px;
-      border-top: 1px solid var(--color-hair);
-      grid-template-columns: auto minmax(0, 1fr);
-      grid-template-rows: 44px 48px 32px;
-      grid-template-areas:
-        "inv help"
-        "field field"
-        "helper helper";
-    }
-    .play-side {
-      display: none;
-    }
-    .play-tabs {
-      grid-area: tabs;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      padding-bottom: env(safe-area-inset-bottom);
-      border-top: 1px solid var(--color-hair);
-      background: var(--color-sheet);
-    }
-    .play-sheet {
-      grid-row: 3 / 5;
-      grid-column: 1;
-      z-index: 50;
-      display: flex;
-      min-height: 0;
-      flex-direction: column;
-      overflow: hidden;
-      contain: size;
-      border-top: 1px solid var(--color-hair-2);
-      background: var(--color-sheet);
-      transition:
-        opacity var(--t-fade) var(--ease-out),
-        visibility var(--t-fade);
-    }
-    .play-sheet[data-open="0"] {
-      visibility: hidden;
-      opacity: 0;
-      pointer-events: none;
-    }
-  }
-  /* A short phone: two narration lines, one helper line. Still constants. */
-  @media (max-width: 1023.98px) and (max-height: 720px) {
-    .play {
-      --narr-h: 44px;
-      --line-h: 70px;
-      --ln-0: 24px;
-      --ln-1: 20px;
-      --ln-2: 17px;
-    }
-    .play-dialogue {
-      padding-top: 6px;
-      row-gap: 3px;
-      grid-template-rows: 20px var(--narr-h) var(--line-h) 40px;
-    }
-    .play-input {
-      padding-block: 6px 4px;
-      row-gap: 6px;
-      grid-template-rows: 44px 44px 16px;
-    }
-  }
-  /* A phone on its side: the picture on the left, the conversation on the right.
-     Goal, Say and Notes open from the Menu. */
-  @media (max-height: 520px) and (orientation: landscape) and (max-width: 1023.98px) {
-    .play {
-      --narr-h: 40px;
-      --line-h: 64px;
-      --ln-0: 24px;
-      --ln-1: 20px;
-      --ln-2: 17px;
-      grid-template-columns: minmax(0, 1fr) 328px;
-      grid-template-rows: 40px minmax(0, 1fr) auto;
-      grid-template-areas:
-        "scene top"
-        "scene dialogue"
-        "scene input";
-    }
-    .play-scene {
-      align-self: center;
-      justify-self: center;
-      width: min(100%, calc((100dvh - 16px) * 16 / 9));
-      border-radius: 10px;
-    }
-    .play-dialogue {
-      padding: 4px 12px 0;
-      row-gap: 2px;
-      grid-template-rows: 18px var(--narr-h) var(--line-h) 40px;
-    }
-    .play-input {
-      padding: 4px 12px;
-      row-gap: 4px;
-      grid-template-rows: 40px 40px 16px;
-    }
-    .play-tabs {
-      display: none;
-    }
-    .play-sheet {
-      grid-row: 2 / 4;
-      grid-column: 2;
-      border-left: 1px solid var(--color-hair-2);
-    }
-  }
+/* Text over the painting: readable on any part of it without a box. */
+.over-art {
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.85),
+    0 0 14px rgb(0 0 0 / 0.55);
+}
 
-  /* One thing at a time: children share a cell and swap by opacity. */
-  .swap {
-    display: grid;
-    min-width: 0;
-    min-height: 0;
+.badge-in {
+  animation: badge-in 300ms var(--ease-out) both;
+}
+@keyframes badge-in {
+  from {
+    transform: scale(0);
   }
-  .swap > * {
-    grid-area: 1 / 1;
-    min-width: 0;
+}
+.sheet-in {
+  animation: sheet-in 260ms var(--ease-out) both;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
   }
+}
+/* The story's voice. */
+.story {
+  font-family: var(--font-story);
+  font-optical-sizing: auto;
+  letter-spacing: 0.003em;
+}
 
-  /* Target-language text: the lang attribute picks locale-appropriate glyph forms. */
-  .target {
-    font-family: var(--font-target);
-    font-weight: 500;
+/* ---- Small motion vocabulary */
+.fade-in {
+  animation: fade-in 240ms var(--ease-out) both;
+}
+.rise-in {
+  animation: rise-in 260ms var(--ease-out) both;
+}
+.slow-fade-in {
+  animation: fade-in 700ms var(--ease-out) both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
-  .target:lang(ja) {
-    font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", var(--font-target);
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-
-  /* ---- Ruby: romanization sits over each word; the gap between words shows where
-     one ends and the next begins. Real <ruby>, laid out as a column so the
-     romanization never collides with a neighbour. */
-  .ruby-line {
-    display: block;
-    line-height: 1.15;
+}
+/* The learner's own line is shown briefly, then gets out of the way. */
+.linger {
+  animation:
+    rise-in 220ms var(--ease-out) both,
+    fade-out 600ms ease-in 4200ms forwards;
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
   }
-  .ruby-line ruby,
-  .ruby-line .ruby-col {
-    display: inline-flex;
-    flex-direction: column-reverse;
-    align-items: center;
-    vertical-align: baseline;
-    margin-inline: 0.14em;
+}
+.drawer-in {
+  animation: drawer-in 240ms var(--ease-out) both;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
   }
-  .ruby-line .ruby-col.is-punct {
-    margin-inline: 0;
-  }
-  .ruby-line rt,
-  .ruby-line .ruby-pad {
-    display: block;
-    font-family: var(--font-ui);
-    font-weight: 400;
-    /* Never below legible, however far the line has been fitted down. */
-    font-size: max(11px, 0.44em);
-    line-height: 1.15;
-    letter-spacing: 0.01em;
-    color: var(--color-ink-2);
-    padding-bottom: 0.18em;
-    white-space: nowrap;
-    text-align: center;
-    user-select: none;
-  }
-  /* The line slot: three fixed steps, chosen before paint, never animated. */
-  .fit-line[data-step="0"] {
-    font-size: var(--ln-0);
-  }
-  .fit-line[data-step="1"] {
-    font-size: var(--ln-1);
-  }
-  .fit-line[data-step="2"] {
-    font-size: var(--ln-2);
-  }
-
-  /* Text over a painting (title, intro, ending only). */
-  .over-art {
-    text-shadow:
-      0 1px 2px rgb(0 0 0 / 0.85),
-      0 0 14px rgb(0 0 0 / 0.55);
-  }
-
-  /* ---- Scene objects. The only thing that travels is an object changing zone. */
-  .cutout {
-    transition:
-      left var(--t-slide) var(--ease-out),
-      top var(--t-slide) var(--ease-out),
-      height var(--t-slide) var(--ease-out),
-      opacity var(--t-fade) var(--ease-out);
-  }
-  .cutout-img {
-    transition: filter var(--t-fade) var(--ease-out);
-    filter: drop-shadow(0 6px 8px rgb(0 0 0 / 0.35));
-  }
-  /* Hover and focus: a still outline. Objects never move under the pointer. */
-  .cutout:focus-visible .cutout-img {
-    filter: drop-shadow(1.5px 0 0 rgb(241 238 232 / 0.6)) drop-shadow(-1.5px 0 0 rgb(241 238 232 / 0.6))
-      drop-shadow(0 1.5px 0 rgb(241 238 232 / 0.6)) drop-shadow(0 -1.5px 0 rgb(241 238 232 / 0.6));
-  }
-  @media (hover: hover) {
-    .cutout:not([disabled]):hover .cutout-img {
-      filter: drop-shadow(1.5px 0 0 rgb(241 238 232 / 0.6)) drop-shadow(-1.5px 0 0 rgb(241 238 232 / 0.6))
-        drop-shadow(0 1.5px 0 rgb(241 238 232 / 0.6)) drop-shadow(0 -1.5px 0 rgb(241 238 232 / 0.6));
-    }
-  }
-  /* Code-controlled highlight: a crisp outline that follows the PNG alpha. */
-  .cutout-lit .cutout-img {
-    animation: lit 1500ms ease-in-out infinite;
-  }
-  @keyframes lit {
-    0%,
-    100% {
-      filter: drop-shadow(2px 0 0 rgb(241 238 232 / 1)) drop-shadow(-2px 0 0 rgb(241 238 232 / 1))
-        drop-shadow(0 2px 0 rgb(241 238 232 / 1)) drop-shadow(0 -2px 0 rgb(241 238 232 / 1));
-    }
-    50% {
-      filter: drop-shadow(2px 0 0 rgb(241 238 232 / 0.6)) drop-shadow(-2px 0 0 rgb(241 238 232 / 0.6))
-        drop-shadow(0 2px 0 rgb(241 238 232 / 0.6)) drop-shadow(0 -2px 0 rgb(241 238 232 / 0.6));
-    }
-  }
-
-  /* The story's voice. */
-  .story {
-    font-family: var(--font-story);
-    font-optical-sizing: auto;
-    letter-spacing: 0.003em;
-  }
-
-  /* ---- Motion vocabulary: opacity and colour. No transforms. */
-  .fade-in {
-    animation: fade-in var(--t-fade) var(--ease-out) both;
-  }
-  .fade-out {
-    animation: fade-out var(--t-fade) var(--ease-out) both;
-  }
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes fade-out {
-    to {
-      opacity: 0;
-    }
-  }
-  /* A number that changed: a colour flash on the number itself. */
-  .flash-gain {
-    animation: flash-gain var(--t-flash) ease-out;
-  }
-  .flash-loss {
-    animation: flash-loss var(--t-flash) ease-out;
-  }
-  @keyframes flash-gain {
-    from {
-      color: var(--color-jade);
-    }
-  }
-  @keyframes flash-loss {
-    from {
-      color: var(--color-ember);
-    }
-  }
-  /* Something new in a list: a tint in place that settles back. */
-  .tintable {
-    transition: background-color var(--t-flash) ease-out;
-  }
-  .tintable[data-new="1"] {
-    background-color: rgb(159 195 177 / 0.14);
-  }
-
-  .thinking span {
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    margin: 0 3px;
-    border-radius: 50%;
-    background: var(--color-ink);
+}
+.thinking span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 3px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  opacity: 0.25;
+  animation: think 1200ms ease-in-out infinite;
+}
+.thinking span:nth-child(2) {
+  animation-delay: 160ms;
+}
+.thinking span:nth-child(3) {
+  animation-delay: 320ms;
+}
+@keyframes think {
+  0%,
+  60%,
+  100% {
     opacity: 0.25;
-    animation: think 1200ms ease-in-out infinite;
   }
-  .thinking span:nth-child(2) {
-    animation-delay: 160ms;
+  30% {
+    opacity: 0.9;
   }
-  .thinking span:nth-child(3) {
-    animation-delay: 320ms;
+}
+/* The cancel window: a hairline that runs out. */
+.countdown {
+  transform-origin: left;
+  animation: countdown linear forwards;
+}
+@keyframes countdown {
+  from {
+    transform: scaleX(1);
   }
-  @keyframes think {
-    0%,
-    60%,
-    100% {
-      opacity: 0.25;
-    }
-    30% {
-      opacity: 0.9;
-    }
+  to {
+    transform: scaleX(0);
   }
-  /* The cancel window: a hairline that runs out. */
-  .countdown {
-    transform-origin: left;
-    animation: countdown linear forwards;
-  }
-  @keyframes countdown {
-    from {
-      transform: scaleX(1);
-    }
-    to {
-      transform: scaleX(0);
-    }
-  }
+}
 
-  input[type="range"].quiet {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 40px;
-    background: linear-gradient(var(--color-hair-2), var(--color-hair-2)) center / 100% 2px no-repeat;
-    outline-offset: 0;
-  }
-  input[type="range"].quiet::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--color-ink);
-    border: 0;
-  }
-  input[type="range"].quiet::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--color-ink);
-    border: 0;
-  }
-  @media (pointer: coarse) {
-    input[type="range"].quiet::-webkit-slider-thumb {
-      width: 22px;
-      height: 22px;
-    }
-    input[type="range"].quiet::-moz-range-thumb {
-      width: 22px;
-      height: 22px;
-    }
-  }
+input[type="range"].quiet {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: var(--color-hair-2);
+  border-radius: 1px;
+  outline-offset: 6px;
+}
+input[type="range"].quiet::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  border: 0;
+}
+input[type="range"].quiet::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  border: 0;
+}
 
-  /* Internal scrolling only, and a scrollbar that never re-wraps the text beside it. */
-  .scroll-quiet {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-gutter: stable;
-    scrollbar-color: var(--color-hair-2) transparent;
-  }
-  .no-scrollbar {
-    scrollbar-width: none;
-  }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-callout {
-    -webkit-touch-callout: none;
-  }
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-hair-2) transparent;
+}
+
 }
 
 @media (prefers-reduced-motion: reduce) {

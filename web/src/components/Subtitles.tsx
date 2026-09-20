@@ -1,14 +1,14 @@
 // The turn as you read it: first the narrator (the story's voice, in prose), then the
 // character's lines as film subtitles, appearing one at a time as they are spoken
 // (current line bright, earlier ones dimmed). Your own move is echoed like a game log.
-// Character lines are never translated; in Story mode the narrator may give the gist.
+// Character lines are never translated.
 
 import { useMemo } from "react";
 import { useGame } from "../store";
 import { RubyLine } from "./RubyLine";
-import type { LearnerEntry, Line, SceneView } from "../lib/types";
+import type { LearnerEntry, Line } from "../lib/types";
 
-export function Subtitles({ compact = false, caption = false }: { compact?: boolean; caption?: boolean }) {
+export function Subtitles({ compact = false }: { compact?: boolean }) {
   const transcript = useGame((s) => s.transcript);
   const hidden = useGame((s) => s.hidden);
   const speaking = useGame((s) => s.speakingLineId);
@@ -39,13 +39,12 @@ export function Subtitles({ compact = false, caption = false }: { compact?: bool
   const waiting = phase === "waiting" || phase === "error";
   const shown = exchange.lines.filter((l) => !hidden[l.line_id]);
   const currentId = speaking && shown.some((l) => l.line_id === speaking) ? speaking : shown[shown.length - 1]?.line_id;
-  // A very short window (a phone on its side) only has room for the line being spoken.
   const visible = compact ? shown.filter((l) => l.line_id === currentId) : shown;
   const mine = waiting ? pending : shownAt && Date.now() - shownAt < 4500 ? exchange.learner : null;
   const hint = help?.kind === "hint" && help.hint && !waiting ? help.hint : null;
 
   return (
-    <div data-testid="subtitles" data-placement={caption ? "caption" : "subtitle"} className="pointer-events-none mx-auto flex w-full max-w-[820px] flex-col items-center gap-2 px-5 text-center sm:gap-2.5">
+    <div data-testid="subtitles" className="pointer-events-none mx-auto flex w-full max-w-[720px] shrink-0 flex-col items-center gap-2 text-center sm:gap-2.5">
       {!waiting && exchange.prose && !(compact && visible.length > 0) && (
         <p
           key={exchange.turn}
@@ -85,11 +84,11 @@ export function Subtitles({ compact = false, caption = false }: { compact?: bool
 
       {mine && (
         <p
-          key={mine.attempt_id + mine.transcript + (mine.tapped_object_id ?? "") + (mine.action_id ?? "")}
+          key={mine.attempt_id + mine.transcript}
           data-testid="learner-line"
-          className={`over-art m-0 flex items-center gap-1.5 text-[14px] text-ink-2 ${caption ? "self-center" : "self-end"} ${waiting ? "rise-in" : "linger"}`}
+          className={`over-art m-0 flex items-center gap-1.5 self-center text-[14px] text-ink-2 ${waiting ? "rise-in" : "linger"}`}
         >
-          <Echo entry={mine} scene={scene} locale={language.locale} />
+          <Echo entry={mine} locale={language.locale} />
         </p>
       )}
 
@@ -104,25 +103,14 @@ export function Subtitles({ compact = false, caption = false }: { compact?: bool
   );
 }
 
-/** "You show [the photo]", "You say ...": your move, the way a game log would put it. */
-export function Echo({ entry, scene, locale }: { entry: LearnerEntry; scene: SceneView | null; locale: string }) {
-  if (entry.input_mode !== "tap") {
-    return (
-      <>
-        <span className="text-ink-3">You say</span>
-        <span lang={locale} className="target font-normal">
-          {entry.transcript}
-        </span>
-      </>
-    );
-  }
-  const object = scene?.objects.find((o) => o.id === entry.tapped_object_id);
-  const verb = object?.actions?.find((a) => a.id === entry.action_id)?.label.toLowerCase();
+/** "You say ...": your move, the way a game log would put it. */
+export function Echo({ entry, locale }: { entry: LearnerEntry; locale: string }) {
   return (
-    <span className="flex items-center gap-1.5" data-pointed={entry.tapped_object_id ?? ""} data-action={entry.action_id ?? "point"}>
-      <span className="text-ink-3">You</span>
-      <span>{verb && verb !== "point" ? verb : "point at"}</span>
-      {object && <img src={object.art_url} alt="" className="h-6 w-auto" />}
-    </span>
+    <>
+      <span className="text-ink-3">You say</span>
+      <span lang={locale} className="target font-normal">
+        {entry.transcript}
+      </span>
+    </>
   );
 }

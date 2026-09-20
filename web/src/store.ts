@@ -7,7 +7,6 @@ import type {
   ActBody,
   Catalog,
   Clue,
-  Difficulty,
   Ending,
   Entry,
   GameView,
@@ -16,7 +15,6 @@ import type {
   Language,
   LearnerEntry,
   Line,
-  Persona,
   Phrase,
   Progress,
   PublicState,
@@ -57,18 +55,15 @@ interface GameState {
   catalog: Catalog | null;
   startError: string | null;
   starting: boolean;
-  chosenPersona: string | null;
+  /** the locale picked on the title screen, before a journey exists */
+  chosenLanguage: string | null;
 
   journeyId: string | null;
   token: string | null;
   language: Language | null;
-  personas: Persona[];
-  personaId: string | null;
   scene: SceneView | null;
   scenes: JourneyScene[];
   transcript: Entry[];
-  zones: Record<string, string>;
-  mood: string;
   progress: Progress | null;
   sceneComplete: boolean;
   summary: Summary | null;
@@ -76,7 +71,6 @@ interface GameState {
   story: Story | null;
   game: GameView | null;
   ending: Ending | null;
-  chosenDifficulty: Difficulty;
 
   /** notebook: how many clues the learner has already looked at, and the newest arrival */
   cluesSeen: number;
@@ -111,10 +105,9 @@ interface GameState {
   learnerShownAt: number;
   notice: string | null;
   failedAct: ActBody | null;
-  toast: string | null;
 
   boot(): Promise<void>;
-  choosePersona(id: string): void;
+  chooseLanguage(locale: string): void;
   begin(): Promise<void>;
   enterScene(body: { scene_id?: string; restart?: boolean }, card: SceneCard | null): Promise<void>;
   retryIntro(): Promise<void>;
@@ -124,9 +117,6 @@ interface GameState {
   cancelPreview(): void;
   retryFailed(): Promise<void>;
   sendText(text: string): Promise<boolean>;
-  tapObject(objectId: string, actionId?: string): Promise<void>;
-  chooseDifficulty(d: Difficulty): void;
-  setDifficulty(d: Difficulty): Promise<void>;
   openNotebook(): void;
   setPhraseOpen(open: boolean): void;
   askPhrase(text: string): Promise<void>;
@@ -134,7 +124,6 @@ interface GameState {
   playPhrase(p: Phrase): void;
   usePhrase(p: Phrase): void;
   requestHelp(): Promise<void>;
-  setPersona(id: string): Promise<void>;
   replay(line: Line, rate?: number): void;
   finishScene(): Promise<void>;
   continueJourney(): Promise<void>;
@@ -145,7 +134,6 @@ interface GameState {
 
 let autoTimer: number | null = null;
 let summaryTimer: number | null = null;
-let toastTimer: number | null = null;
 let glowTimer: number | null = null;
 let clueTimer: number | null = null;
 let speakTimer: number | null = null;
@@ -186,13 +174,9 @@ export const useGame = create<GameState>((set, get) => {
     set({
       journeyId: st.journey_id,
       language: st.language,
-      personas: st.personas,
-      personaId: st.persona_id,
       scene: st.scene,
       scenes: st.scenes ?? [],
       transcript: st.transcript ?? [],
-      zones: st.zones ?? {},
-      mood: st.mood,
       progress: st.progress,
       sceneComplete: st.scene_complete,
       summary: st.summary,
@@ -283,8 +267,6 @@ export const useGame = create<GameState>((set, get) => {
       transcript: [...s.transcript, ...entries],
       game: r.game ?? s.game,
       ending: r.ending ?? s.ending,
-      zones: r.zones,
-      mood: r.mood,
       progress: r.progress,
       sceneComplete: r.scene_complete,
       summary: r.summary ?? s.summary,
@@ -364,17 +346,13 @@ export const useGame = create<GameState>((set, get) => {
     catalog: null,
     startError: null,
     starting: false,
-    chosenPersona: null,
+    chosenLanguage: null,
     journeyId: null,
     token: null,
     language: null,
-    personas: [],
-    personaId: null,
     scene: null,
     scenes: [],
     transcript: [],
-    zones: {},
-    mood: "neutral",
     progress: null,
     sceneComplete: false,
     summary: null,
@@ -382,7 +360,6 @@ export const useGame = create<GameState>((set, get) => {
     story: null,
     game: null,
     ending: null,
-    chosenDifficulty: "story",
     cluesSeen: 0,
     clueToast: null,
     phrasebook: [],
@@ -407,7 +384,6 @@ export const useGame = create<GameState>((set, get) => {
     learnerShownAt: 0,
     notice: null,
     failedAct: null,
-    toast: null,
 
     async boot() {
       const saved = loadJourney(api.mock);
@@ -431,34 +407,16 @@ export const useGame = create<GameState>((set, get) => {
       }
       try {
         const catalog = await api.catalog();
-        set({ catalog, language: get().language ?? catalog.language, story: get().story ?? catalog.story ?? null });
+        const language = get().language ?? catalog.language;
+        set({ catalog, language, story: get().story ?? catalog.story ?? null, chosenLanguage: get().chosenLanguage ?? language?.locale ?? null });
       } catch {
         /* server down: the start screen still renders; Begin reports it */
       }
       set({ screen: "start" });
     },
 
-    choosePersona(id) {
-      set({ chosenPersona: id });
-    },
-
-    chooseDifficulty(d) {
-      set({ chosenDifficulty: d });
-    },
-
-    async setDifficulty(d) {
-      const { journeyId, token, game } = get();
-      if (!journeyId || !token || !game || game.difficulty === d) return;
-      set({ game: { ...game, difficulty: d } });
-      try {
-        const st = await api.difficulty(journeyId, token, d);
-        if (st.game) set({ game: st.game });
-        set({ toast: d === "story" ? "Story mode, from the next turn" : "Immersion, from the next turn" });
-      } catch {
-        set({ game, toast: "Couldn't switch just now" });
-      }
-      if (toastTimer != null) window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => set({ toast: null }), 2600);
+    chooseLanguage(locale) {
+      set({ chosenLanguage: locale });
     },
 
     openNotebook() {
@@ -503,7 +461,8 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     usePhrase(p) {
-      set((s) => ({ draft: { text: p.text, nonce: s.draft.nonce + 1 }, phraseOpen: window.innerWidth >= 1100 ? s.phraseOpen : false }));
+      // The sheet covers the input it just filled, so it gets out of the way.
+      set((s) => ({ draft: { text: p.text, nonce: s.draft.nonce + 1 }, phraseOpen: false }));
     },
 
     async begin() {
@@ -518,18 +477,21 @@ export const useGame = create<GameState>((set, get) => {
       }
       try {
         let { journeyId, token } = get();
+        const locale = get().chosenLanguage;
+        // A different language is a different journey: the character speaks only one.
+        if (journeyId && token && locale && get().language && get().language!.locale !== locale) {
+          clearJourney(api.mock);
+          journeyId = null;
+          token = null;
+          set({ journeyId: null, token: null });
+        }
         if (!journeyId || !token) {
-          const persona = get().chosenPersona ?? get().catalog?.personas[0]?.id;
-          const created = await api.createJourney(persona ? { persona_id: persona } : {});
+          const created = await api.createJourney(locale ? { language: locale } : {});
           journeyId = created.journey_id;
           token = created.token;
           saveJourney(api.mock, { journey_id: journeyId, token });
           set({ token });
           hydrate(created.state);
-          const want = get().chosenDifficulty;
-          if (created.state.game && created.state.game.difficulty !== want) hydrate(await api.difficulty(journeyId, token, want));
-        } else if (get().chosenPersona && get().chosenPersona !== get().personaId) {
-          hydrate(await api.persona(journeyId, token, get().chosenPersona!));
         }
         const first = get().scenes.find((s) => s.status !== "done") ?? get().catalog?.scenes[0] ?? null;
         await get().enterScene({}, first);
@@ -611,7 +573,6 @@ export const useGame = create<GameState>((set, get) => {
           input_mode: "speech",
           transcript: p.transcript,
           romanized: p.romanized,
-          tapped_object_id: null,
         },
       );
     },
@@ -632,27 +593,8 @@ export const useGame = create<GameState>((set, get) => {
       const t = text.trim();
       const s = get();
       if (!t || s.phase === "waiting" || s.phase === "listening" || s.phase === "transcribing") return false;
-      await act(
-        { text: t },
-        { kind: "learner", turn: 0, attempt_id: "", input_mode: "text", transcript: t, romanized: null, tapped_object_id: null },
-      );
+      await act({ text: t }, { kind: "learner", turn: 0, attempt_id: "", input_mode: "text", transcript: t, romanized: null });
       return true;
-    },
-
-    async tapObject(objectId, actionId) {
-      const s = get();
-      if (s.phase !== "idle" && s.phase !== "error") return;
-      if (s.sceneComplete) return;
-      await act(actionId ? { tap_object_id: objectId, action_id: actionId } : { tap_object_id: objectId }, {
-        kind: "learner",
-        turn: 0,
-        attempt_id: "",
-        input_mode: "tap",
-        transcript: "",
-        romanized: null,
-        tapped_object_id: objectId,
-        action_id: actionId ?? null,
-      });
     },
 
     async requestHelp() {
@@ -677,22 +619,6 @@ export const useGame = create<GameState>((set, get) => {
       } finally {
         set({ helpBusy: false });
       }
-    },
-
-    async setPersona(id) {
-      const { journeyId, token, personaId, personas } = get();
-      if (!journeyId || !token || id === personaId) return;
-      const before = personaId;
-      set({ personaId: id });
-      try {
-        const st = await api.persona(journeyId, token, id);
-        const label = personas.find((p) => p.id === st.persona_id)?.label ?? "";
-        set({ personaId: st.persona_id, toast: `${label}, from the next reply` });
-      } catch {
-        set({ personaId: before, toast: "Couldn't switch just now" });
-      }
-      if (toastTimer != null) window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => set({ toast: null }), 2600);
     },
 
     replay(line, rate = 1) {
@@ -743,7 +669,7 @@ export const useGame = create<GameState>((set, get) => {
       } catch {
         /* start screen renders without the cover */
       }
-      set({ screen: "start", summary: null, ending: null, scene: null, chosenPersona: get().personaId, phraseResult: null, phraseOpen: false });
+      set({ screen: "start", summary: null, ending: null, scene: null, phraseResult: null, phraseOpen: false });
     },
 
     dismissNotice() {

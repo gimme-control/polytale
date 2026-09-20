@@ -6,20 +6,15 @@ Idempotent: every asset is skipped when its output already exists, unless named 
     python scripts/generate_art.py                       # make whatever is missing
     python scripts/generate_art.py --list                # assets + status
     python scripts/generate_art.py --only bar            # a whole scene ...
-    python scripts/generate_art.py --only bar/obj_beer   # ... or single assets
-    python scripts/generate_art.py --force bar/bg_puzzled
-    python scripts/generate_art.py --rederive bar/obj_water   # re-key from cached raw, no model call
+    python scripts/generate_art.py --only bar/cover      # ... or single assets
+    python scripts/generate_art.py --force bar/bg
+    python scripts/generate_art.py --rederive bar/cover  # rebuild from cached raw, no model call
 
 Asset names are ``<scene>/<file stem>``. ``--force`` / ``--rederive`` only touch the assets they
 name; ``--only`` limits what is considered at all.
 
 Raw model outputs (the PNG masters) live in ``cache/art_raw/<scene>/`` (gitignored) and every
 image-model call is appended to ``cache/art_raw/calls.jsonl``.
-
-Mood backgrounds need ``npc_region`` in the scene's ``LAYOUT.json`` (the character's upper-body
-box, measured by looking at ``bg``): the edited frame is blended into the neutral frame only
-inside that feathered box, so the rest of the image is the same pixels and a crossfade cannot
-flicker. Until the region exists those assets are deferred.
 """
 
 from __future__ import annotations
@@ -28,26 +23,16 @@ import argparse
 import io
 import json
 import os
-import shutil
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-
-from tools.matte import (  # noqa: E402
-    drop_faint_islands,
-    drop_small_islands,
-    soft_key_cutout,
-    solidify,
-    trim_to_subject,
-)
 
 SCENES = ROOT / "content" / "scenes"
 RAW = ROOT / "cache" / "art_raw"
@@ -57,7 +42,6 @@ IMAGE_MODEL = "gemini-3-pro-image"
 BG_SIZE = (2400, 1350)
 COVER_SIZE = (1920, 1080)
 WEBP_MAX_BYTES = 600 * 1024
-OBJ_MAX_SIDE = 768
 
 # --------------------------------------------------------------------------- #
 # Prompts
@@ -156,95 +140,6 @@ source is never visible), rimming the bartender's shoulder and the right side of
 
 {_bg_tail("the bartender")}"""
 
-MARKET_BG = f"""{STYLE}
-
-FIRST-PERSON point of view of a customer standing at the counter of a street-food stall in a busy
-Chinese night market, on the night of a huge football final. Eye-level, straight-on framing, 16:9.
-
-THE VENDOR: a Chinese woman in her mid-50s standing directly behind the stall counter, framed
-waist-up, placed at the horizontal CENTRE of the image. Hair tied back, a few grey strands,
-weathered capable face, sleeves pushed up, a plain dark indigo apron over a simple shirt. Sharp,
-amused, seen-it-all. She looks straight at the viewer with a NEUTRAL, composed expression, mouth
-closed. Both hands rest on the far edge of the counter in front of her, empty.
-
-THE STALL: directly behind her, running the FULL WIDTH of the image at the height of her waist
-and elbows, is one long stainless-steel back counter (a prep table), warmly lit from above by a
-hidden light strip under a dark canvas awning, against a plain dark corrugated-metal back wall.
-IMPORTANT: the top of this back counter is almost completely BARE — long clear empty stretches of
-steel to the LEFT and to the RIGHT of the vendor, where props will be added later. Only at the
-extreme left edge of the image is there a big steaming stock pot (partly cropped by the frame),
-its steam rising and catching the light, and only at the extreme right edge a small stack of
-plain bamboo steamer baskets. Nothing else on the back counter, nothing near the vendor. Her arms
-are NOT spread wide: her hands rest on the near counter close together in front of her body.
-
-THE NEAR COUNTER: a worn stainless-steel stall counter with a wooden front edge fills the bottom
-30% of the frame, running edge to edge, seen from slightly above. Its surface is completely
-EMPTY — no bowls, no bottles, no chopsticks, no objects at all — and evenly, softly lit so that
-props can be placed on it later.
-
-MATCH-NIGHT DRESSING: the stall stands on the edge of a FAN ZONE on the night of a huge football
-final. Strings of small PLAIN triangular pennants in mixed flat colours hang overhead with the
-bare bulbs. At the extreme LEFT edge of the frame, beside the stock pot, a glass jar holds three
-or four small PLAIN hand-flags on wooden sticks (flat red and white, no emblem) as set dressing —
-nowhere near the clear stretches of the back counter.
-
-LIGHT AND BACKGROUND: night. A string of warm bare bulbs across the top of the frame, glowing
-steam. Past the left edge of the stall, far down the lane, the cool blue-white glow of a GIANT
-OUTDOOR SCREEN — only a soft, blurred, overexposed rectangle of light with no readable content —
-and in front of it a dense crowd as tiny soft out-of-focus silhouettes and bokeh, a few raised
-arms and plain scarves. There are NO signs, NO billboards, NO banners with markings, NO
-shopfronts and NO posters anywhere in the background, not even blurred ones, and no
-distinguishable people.
-
-{_bg_tail("the vendor")}"""
-
-
-def _mood_prompt(who: str, change: str) -> str:
-    return f"""Edit the attached painting. Keep it IDENTICAL in every respect — same camera, same
-framing, same person in exactly the same position and same scale, same clothes, same background,
-same counter, same lighting, same colours, same brushwork — and change ONLY {who}'s facial
-expression and upper-body gesture:
-
-{change}
-
-{who.capitalize()} stays the same person with the same face, hair and clothing, in the same
-place. Do not move, add or remove any object. The counter stays empty. Still exactly one person.
-{NO_TEXT}"""
-
-
-MOODS = {
-    "bar": {
-        "pleased": _mood_prompt(
-            "the bartender",
-            "PLEASED — a small, genuine, warm closed-mouth smile reaching his eyes, chin dipped in "
-            "a slight approving nod. Hands stay resting on the counter.",
-        ),
-        "puzzled": _mood_prompt(
-            "the bartender",
-            "PUZZLED — head tilted slightly to one side, one eyebrow raised, lips slightly pursed, "
-            "a questioning look at the viewer; one hand raised in FRONT OF HIS OWN CHEST, elbow "
-            "tucked in against his side, palm up and fingers half-open in a small 'sorry, what?' "
-            "gesture. That hand stays entirely inside the outline of his torso and apron — it "
-            "does NOT reach out sideways past his body. The other hand stays on the counter.",
-        ),
-    },
-    "market": {
-        "pleased": _mood_prompt(
-            "the vendor",
-            "PLEASED — a small, genuine, amused closed-mouth smile with crinkled eyes, chin dipped "
-            "in a slight approving nod. Hands stay resting on the counter.",
-        ),
-        "puzzled": _mood_prompt(
-            "the vendor",
-            "PUZZLED — head tilted slightly to one side, one eyebrow raised, a sceptical "
-            "questioning look at the viewer; one hand raised in FRONT OF HER OWN CHEST, elbow tucked in against "
-            "her side, palm up and fingers half-open in a small 'what do you mean?' gesture. That "
-            "hand stays entirely inside the outline of her torso and apron — it does NOT reach "
-            "out sideways past her body. The other hand stays on the counter.",
-        ),
-    },
-}
-
 COVERS = {
     "bar": f"""{STYLE}
 
@@ -260,20 +155,6 @@ colours runs across the facade. The wet asphalt and paving reflect the warm glow
 magenta-and-teal neon from an ABSTRACT neon ring (a simple ring, not a letter or word) above the
 door. A parked bicycle, a drainpipe, tangled overhead cables, light mist. Inviting, expectant.
 Nobody in the street. {NO_BRAND} {NO_TEXT} Full-bleed, no border.""",
-    "market": f"""{STYLE}
-
-Establishing shot, 16:9, painted with the same realistic, atmospheric, cinematic finish as a film
-still (no ink outlines, no sketch lines): a narrow night-market lane in a Chinese city seen from
-its entrance, late evening, just after rain, on the night of a huge football final. Street-food
-stalls under dark canvas awnings recede into misty distance, strings of bare warm bulbs and small
-PLAIN triangular pennants in mixed flat colours overhead, thick glowing steam rising from pots and
-grills, wet ground reflecting the lights. The nearest stall on the right is the hero: a worn
-stainless-steel counter, a big steaming stock pot, stacked plain bowls, bamboo steamers, one warm
-hanging lamp. At the far end of the lane the FAN ZONE: the cool blue-white glow of a giant outdoor
-screen — only a blurred, overexposed rectangle of light with no readable content — and a dense
-crowd as soft out-of-focus silhouettes with raised arms and plain scarves. Electric, inviting.
-There are NO signs, NO banners with markings, NO boards and NO posters anywhere — only plain
-canvas, metal, wood, bulbs, pennants and steam. {NO_BRAND} {NO_TEXT} Full-bleed, no border.""",
 }
 
 MEI = (
@@ -283,193 +164,7 @@ MEI = (
 )
 
 
-def _obj_prompt(subject: str, screen: str, *, hanging: bool = False) -> str:
-    shadow = (
-        "The prop hangs in mid-air: NO shadow anywhere, no floor."
-        if hanging
-        else "A small, soft, dark contact shadow directly underneath the prop only."
-    )
-    return f"""{STYLE}
-
-A single isolated prop for a narrative game, painted in EXACTLY the style, materials and warm
-low-key lighting of the attached scene (use the attachment ONLY as a style and lighting reference
-— do not paint the scene or any person).
-
-THE PROP: {subject}
-
-View: as seen by someone seated at the counter — three-quarter view from slightly above (about 15
-degrees), upright, not tilted. The whole prop is visible, centred, with generous empty margin on
-all sides. Lit from above and slightly in front by a warm lamp, with a soft cool rim light. {shadow}
-
-BACKGROUND: a perfectly flat, uniform, evenly lit {SCREEN[screen]} studio screen filling the whole
-frame edge to edge. No floor line, no table, no gradient, no vignette, no texture, no reflection
-of the prop, no other objects. The prop itself contains no {screen} colour at all.
-
-{NO_TEXT}"""
-
-
-@dataclass(frozen=True)
-class ObjSpec:
-    subject: str
-    screen: str = "green"
-    aspect: str = "1:1"
-    opaque: bool = False  # solid prop (photo, card): restore key-hued interior pixels
-    hanging: bool = False  # hangs in the air: no floor shadow (any painted one is dropped)
-    identity: str = ""  # raw asset whose subject must be matched (sent as a second reference)
-
-
-OBJECTS: dict[str, dict[str, ObjSpec]] = {
-    "bar": {
-        "obj_beer": ObjSpec(
-            "a cold 330 ml beer bottle of dark AMBER-BROWN glass, full, crown cap on, completely "
-            "unlabeled bare glass (no label, no neck foil, no embossing), beaded with fine "
-            "condensation droplets, a few running down.",
-            aspect="9:16",
-        ),
-        "obj_water": ObjSpec(
-            "a tall, plain, straight-sided clear highball glass filled almost to the top with "
-            "still water, no ice, no garnish, no straw; thick glass base, subtle highlights and "
-            "refraction.",
-            aspect="9:16",
-        ),
-        "obj_tea": ObjSpec(
-            "a small traditional Chinese teapot of dark reddish-brown unglazed Yixing clay with "
-            "its lid on, and ONE small matching handle-less clay teacup standing beside it, "
-            "filled with amber tea, a faint wisp of steam. Plain surfaces with no engraving.",
-            aspect="4:3",
-        ),
-        "obj_menu": ObjSpec(
-            "a CLOSED menu booklet bound in worn dark oxblood-brown leather with stitched edges "
-            "and brass corner protectors, standing upright and slightly open like a tent so it "
-            "stands by itself. The cover is completely blank leather — no title, no emblem, no "
-            "embossing.",
-            aspect="3:4",
-        ),
-        "obj_photo": ObjSpec(
-            "a slightly worn instant-camera (polaroid-style) photograph: thick WHITE paper "
-            "border, wider at the bottom, softly scuffed corners, one faint crease. The glossy "
-            f"picture area shows {MEI}, photographed from the chest up, head thrown back a little, "
-            "laughing with real joy, at night, with soft out-of-focus warm amber and red city "
-            "lights behind her. She is the SAME WOMAN as in the second attached image (same face, "
-            "same haircut); only her scarf is as described here. The white border is completely "
-            "blank: no handwriting, no date. The photograph is shown almost straight-on, rotated "
-            "about eight degrees, as if lying on a surface.",
-            aspect="4:3",
-            opaque=True,
-            identity="bar/obj_photo",
-        ),
-        "obj_football": ObjSpec(
-            "a classic leather match football — traditional pattern of white hexagons and black "
-            "pentagons — scuffed and worn from real play, resting on a small turned dark-wood "
-            "display stand with a shallow cup, clearly a prized keepsake. The ball is completely "
-            "unbranded: no logo, no lettering, no signature, no printing of any kind.",
-            aspect="1:1",
-        ),
-        "obj_tv": ObjSpec(
-            "a wall-mounted flat-screen television with a thin black bezel on a short black "
-            "swivel bracket, turned slightly so the screen faces a little to the viewer's left, "
-            "seen from slightly below. The screen is ON and shows a floodlit green football "
-            "pitch from a high broadcast camera angle, with its white line markings and tiny "
-            "players as small specks in plain flat-coloured kits, dark stands around it. The "
-            "picture has NO scoreboard, NO clock, NO caption, NO channel logo and NO graphics. "
-            "The bezel has no brand mark. Only the television and its bracket, nothing else.",
-            screen="blue",
-            aspect="16:9",
-            opaque=True,
-            hanging=True,
-        ),
-        "obj_tab": ObjSpec(
-            "an unpaid bar tab: a small upright brass bill spike on a round brass base, with "
-            "three or four small off-white paper slips impaled on it, the top slip curling "
-            "slightly. The slips carry only a few rows of loose wavy pencil scribble — like a "
-            "seismograph trace — that are NOT letters, NOT characters and NOT digits. No stamp, "
-            "no printed header.",
-            aspect="3:4",
-        ),
-        "obj_baijiu": ObjSpec(
-            "a very small, thick-walled clear shot glass filled to the brim with crystal-clear "
-            "baijiu liquor, standing beside a small squat WHITE glazed ceramic liquor bottle with "
-            "a narrow neck and a plain dark red cloth-wrapped stopper. The bottle is about three "
-            "times the height of the glass. Completely unlabeled: bare white glaze, no label, no "
-            "seal, no markings.",
-            aspect="1:1",
-        ),
-        "obj_money": ObjSpec(
-            "a small loose stack of four used red-and-pink paper banknotes lying flat, fanned "
-            "slightly, soft and creased. This is an ABSTRACT PROP currency: the printed design on "
-            "every note is ONLY a loose impressionistic wash of red and rose ornamental swirls "
-            "and fine wavy guilloche lines, like an unfinished painting. The corners and centre "
-            "where numerals or a portrait would normally be are plain pale blank paper. There "
-            "are NO numerals, NO digits, NO zeros, NO characters, NO portrait, NO seal and NO "
-            "legible marks of any kind on any note.",
-            aspect="4:3",
-        ),
-    },
-    "market": {
-        "obj_noodles": ObjSpec(
-            "a deep plain off-white ceramic bowl with a dark rim, full of hand-pulled wheat "
-            "noodles in a rich brown beef broth with slices of beef, a halved soy egg, chopped "
-            "scallions and a little chili oil, steam rising; a pair of plain dark wooden "
-            "chopsticks resting across the rim. The bowl has no pattern and no blue decoration.",
-            screen="blue",
-            aspect="4:3",
-        ),
-        "obj_dumplings": ObjSpec(
-            "a plain round off-white ceramic plate with a dark rim holding eight pan-fried "
-            "crescent dumplings (potstickers) with golden-brown crisp bottoms, glistening, a "
-            "pinch of chopped scallion on top, a faint wisp of steam. The plate has no pattern "
-            "and no blue decoration.",
-            screen="blue",
-            aspect="4:3",
-        ),
-        "obj_scarf": ObjSpec(
-            "a knitted football supporter's scarf in PLAIN red-and-white bar stripes — EXACTLY the "
-            "scarf the woman wears in the second attached image, same two colours, same stripe "
-            "width, same knit — with white-and-red fringed ends, loosely knotted once and hanging "
-            "straight down from a single small dark iron wall hook at the very top, its two ends "
-            "at slightly different lengths, as if someone had kept it aside for its owner. The "
-            "scarf carries NO crest, NO lettering and NO emblem: stripes only. Only the hook and "
-            "the scarf, nothing else. Seen straight-on.",
-            aspect="9:16",
-            hanging=True,
-            identity="bar/obj_photo",
-        ),
-        "obj_ticket": ObjSpec(
-            "a big-match ticket and its wristband: one glossy rectangular card ticket with a "
-            "slight curl, its design made ONLY of bold abstract diagonal colour bands in red, "
-            "white and gold with a shimmering silver holographic foil strip down one edge and a "
-            "perforated stub, plus a flat woven fabric wristband in the same red and white laid "
-            "as an open strip behind it. Both are held together at the top by one plain wooden "
-            "clothes-peg, as if pegged up for safe keeping. There is NO text, NO digits, NO "
-            "barcode, NO QR code, NO seat details, NO logo and NO emblem anywhere — where print "
-            "would be there are only plain colour bands. Seen straight-on.",
-            aspect="3:4",
-            opaque=True,
-            hanging=True,
-        ),
-        "obj_flag": ObjSpec(
-            "a small supporter's hand-waver flag on a thin round wooden stick: a rectangular "
-            "cloth flag QUARTERED in plain red and white (four plain rectangles, red top-left and "
-            "bottom-right, white the other two), rippling slightly, the stick leaning about "
-            "twenty degrees. The flag carries NO emblem, NO crest, NO lettering and NO stars: "
-            "four flat colour fields only. Only the flag and its stick, nothing else.",
-            aspect="3:4",
-            hanging=True,
-        ),
-        "obj_chili": ObjSpec(
-            "a squat clear glass jar, lid off, three-quarters full of deep red chili oil with "
-            "dark chili flakes and seeds settled in it, a small metal spoon standing in the jar. "
-            "Completely unlabeled bare glass.",
-            aspect="3:4",
-        ),
-    },
-}
-
-# Full-frame story illustrations: (output path relative to content/, prompt, reference raws).
-_MEI_REF = (
-    f"THE FRIEND is {MEI} — she is the woman in the attached instant photo: same face, same "
-    "haircut, same striped scarf. "
-)
+_MEI_REF = f"THE FRIEND is {MEI}. "
 _CROWD = (
     "The crowd are anonymous fans seen mostly from behind or as backlit silhouettes, in plain "
     "flat-coloured shirts and plain red-and-white bar-striped scarves. THE FLAGS ARE NOT NATIONAL "
@@ -493,8 +188,8 @@ _BIG_SCREEN = (
     "NO caption, NO channel logo, NO graphics on it"
 )
 ILLUSTRATIONS: dict[str, tuple[str, str, list[str]]] = {
-    "market/ending_kickoff": (
-        "scenes/market/art/ending_kickoff.webp",
+    "bar/ending_kickoff": (
+        "scenes/bar/art/ending_kickoff.webp",
         f"""{STYLE}
 
 FIRST-PERSON point of view, 16:9: you are standing in a packed outdoor FAN ZONE in a Chinese city
@@ -505,10 +200,10 @@ toward the viewer with a huge, delighted grin, holding out a plain plastic cup o
 viewer. She is the only person whose face is clearly seen. Euphoric, electric, warm skin tones
 against the cool screen light, cinematic depth of field. {NO_BRAND} {NO_TEXT} Full-bleed, no
 border.""",
-        ["bar/obj_photo"],
+        [],
     ),
-    "market/ending_late": (
-        "scenes/market/art/ending_late.webp",
+    "bar/ending_late": (
+        "scenes/bar/art/ending_late.webp",
         f"""{STYLE}
 
 FIRST-PERSON point of view, 16:9: you arrive late at a packed outdoor FAN ZONE in a Chinese city at
@@ -519,13 +214,13 @@ laughing out loud, one arm punched up in the air, the other hand holding out a b
 bottle with no label to the viewer. She is the only person whose face is clearly seen. Joyful
 chaos, motion blur at the edges, warm skin tones against the cool screen light. {NO_BRAND}
 {NO_TEXT} Full-bleed, no border.""",
-        ["bar/obj_photo"],
+        [],
     ),
     "story/title": (
         "title.webp",
         f"""{STYLE}
 
-Title key art, 16:9, for a story set in the world of the two attached paintings (same city, same
+Title key art, 16:9, for a story set in the world of the attached painting (same city, same
 finish, same palette): a rain-wet narrow street in a Chinese city on the night of a huge football
 final, seen from street level. Strings of small PLAIN triangular pennants in mixed flat colours
 criss-cross the lane overhead. At the far END of the street, the cool blue-white glow of a giant
@@ -537,14 +232,13 @@ stall. Wet asphalt reflections, mist. Nobody close to the camera.
 COMPOSITION: the top-left third of the image is calm, empty, dark night sky with soft mist and
 no cables, no pennants, no buildings and no detail, reserved for a title. {NO_BRAND} {NO_TEXT}
 Full-bleed, no border.""",
-        ["bar/cover", "market/cover"],
+        ["bar/cover"],
     ),
 }
 ILLUSTRATION_SIZE = (1920, 1080)
 ILLUSTRATION_MAX_BYTES = 350 * 1024
 
 # Market reuses the bar's files byte-for-byte so recall is visually identical.
-SHARED = {"market": ["obj_beer", "obj_water", "obj_money", "obj_photo"]}
 
 # --------------------------------------------------------------------------- #
 # Gemini
@@ -687,43 +381,6 @@ def save_webp(img: Image.Image, path: Path, *, max_bytes: int = WEBP_MAX_BYTES) 
     return quality
 
 
-def region_mask(size: tuple[int, int], region: dict) -> Image.Image:
-    """Feathered rounded box (plate fractions x0,y0,x1,y1) -> L mask."""
-    w, h = size
-    box = (region["x0"] * w, region["y0"] * h, region["x1"] * w, region["y1"] * h)
-    feather = 0.035 * h
-    mask = Image.new("L", size, 0)
-    inset = feather * 1.2
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset),
-        radius=feather * 2,
-        fill=255,
-    )
-    return mask.filter(ImageFilter.GaussianBlur(feather * 0.5))
-
-
-def match_colour(edit: Image.Image, base: Image.Image, keep: Image.Image) -> Image.Image:
-    """Per-channel gain/offset so ``edit`` matches ``base`` where ``keep`` (mask) is 0.
-
-    Edits drift a few levels globally; matching on the untouched area removes any
-    tone step along the blend seam.
-    """
-    e = np.asarray(edit.convert("RGB")).astype(np.float32)
-    b = np.asarray(base.convert("RGB")).astype(np.float32)
-    outside = np.asarray(keep) < 8
-    out = e.copy()
-    for c in range(3):
-        es, bs = e[..., c][outside], b[..., c][outside]
-        gain = float(bs.std() / max(es.std(), 1e-3))
-        out[..., c] = (e[..., c] - es.mean()) * gain + bs.mean()
-    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), mode="RGB")
-
-
-def load_layout(scene: str) -> dict:
-    path = SCENES / scene / "art" / "LAYOUT.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-
-
 # --------------------------------------------------------------------------- #
 # Builders
 # --------------------------------------------------------------------------- #
@@ -740,24 +397,6 @@ def build_bg(scene: str, prompt: str, rederive: bool) -> None:
     print(f"  webp quality {q}")
 
 
-def build_mood(scene: str, mood: str, rederive: bool) -> None:
-    name = f"{scene}/bg_{mood}"
-    base = load_raw(f"{scene}/bg")
-    assert base is not None
-    base = base.convert("RGB")
-    region = load_layout(scene)["npc_region"]
-    raw = load_raw(name) if rederive else None
-    if raw is None:
-        raw = gen_image(name, MOODS[scene][mood], refs=[base])
-        save_raw(name, raw)
-    # Blend at the master's native size (no re-crop => no misregistration), then
-    # apply the same fit as bg.webp.
-    edit = fit_to(raw.convert("RGB"), base.size)
-    mask = region_mask(base.size, region)
-    merged = Image.composite(match_colour(edit, base, mask), base, mask)
-    save_webp(fit_to(merged, BG_SIZE), SCENES / scene / "art" / f"bg_{mood}.webp")
-
-
 def build_cover(scene: str, rederive: bool) -> None:
     name = f"{scene}/cover"
     raw = load_raw(name) if rederive else None
@@ -772,44 +411,6 @@ def build_cover(scene: str, rederive: bool) -> None:
         raw = gen_image(name, prompt, refs=[prior] if prior else None)
         save_raw(name, raw)
     save_webp(fit_to(raw.convert("RGB"), COVER_SIZE), SCENES / scene / "art" / "cover.webp")
-
-
-def build_object(scene: str, stem: str, rederive: bool) -> None:
-    name = f"{scene}/{stem}"
-    spec = OBJECTS[scene][stem]
-    raw = load_raw(name) if rederive else None
-    if raw is None:
-        style = load_raw(f"{scene}/bg")
-        assert style is not None
-        refs = [fit_to(style.convert("RGB"), (1600, 900))]
-        if spec.identity:
-            # May be the asset's own previous raw (a re-dress of the same subject).
-            ident = load_raw(spec.identity)
-            assert ident is not None or spec.identity == name, f"missing raw {spec.identity}"
-            if ident is not None:
-                refs.append(ident)
-        raw = gen_image(
-            name,
-            _obj_prompt(spec.subject, spec.screen, hanging=spec.hanging),
-            refs=refs,
-            aspect_ratio=spec.aspect,
-        )
-        save_raw(name, raw)
-    keyed = soft_key_cutout(raw)
-    if spec.opaque:
-        keyed = solidify(keyed, raw)
-    # A hanging prop is one connected thing; a floor shadow painted anyway is a separate island.
-    cut = drop_small_islands(drop_faint_islands(keyed), min_frac=0.5 if spec.hanging else 0.01)
-    cut = trim_to_subject(cut, alpha_floor=10)
-    scale = OBJ_MAX_SIDE / max(cut.size)
-    if scale < 1.0:
-        cut = cut.resize(
-            (max(1, round(cut.width * scale)), max(1, round(cut.height * scale))),
-            Image.Resampling.LANCZOS,
-        )
-    out = SCENES / scene / "art" / f"{stem}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    cut.save(out, "PNG", optimize=True)
 
 
 def build_illustration(name: str, rederive: bool) -> None:
@@ -831,63 +432,23 @@ def build_illustration(name: str, rederive: bool) -> None:
     )
 
 
-def copy_shared(scene: str, stem: str) -> None:
-    out = SCENES / scene / "art" / f"{stem}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SCENES / "bar" / "art" / f"{stem}.png", out)
-
-
 @dataclass
 class Asset:
     name: str
     out: Path
     build: Callable[[bool], None]
     deps: list[str] = field(default_factory=list)  # asset names that must exist first
-    needs_region: bool = False
-
-
-def _identity_deps(scene: str, stem: str) -> list[str]:
-    ident = OBJECTS[scene][stem].identity
-    return [ident] if ident and ident != f"{scene}/{stem}" else []
 
 
 def _assets() -> list[Asset]:
     out: list[Asset] = []
-    for scene, bg_prompt in (("bar", BAR_BG), ("market", MARKET_BG)):
+    for scene, bg_prompt in (("bar", BAR_BG),):
         art = SCENES / scene / "art"
         bg = f"{scene}/bg"
         out.append(Asset(bg, art / "bg.webp", lambda r, s=scene, p=bg_prompt: build_bg(s, p, r)))
-        for mood in MOODS[scene]:
-            out.append(
-                Asset(
-                    f"{scene}/bg_{mood}",
-                    art / f"bg_{mood}.webp",
-                    lambda r, s=scene, m=mood: build_mood(s, m, r),
-                    [bg],
-                    needs_region=True,
-                )
-            )
         out.append(
             Asset(f"{scene}/cover", art / "cover.webp", lambda r, s=scene: build_cover(s, r))
         )
-        for stem in OBJECTS[scene]:
-            out.append(
-                Asset(
-                    f"{scene}/{stem}",
-                    art / f"{stem}.png",
-                    lambda r, s=scene, st=stem: build_object(s, st, r),
-                    [bg, *_identity_deps(scene, stem)],
-                )
-            )
-        for stem in SHARED.get(scene, []):
-            out.append(
-                Asset(
-                    f"{scene}/{stem}",
-                    art / f"{stem}.png",
-                    lambda r, s=scene, st=stem: copy_shared(s, st),
-                    [f"bar/{stem}"],
-                )
-            )
     for name, (rel, _prompt, ref_names) in ILLUSTRATIONS.items():
         out.append(
             Asset(
@@ -951,9 +512,6 @@ def main() -> int:
         missing = [d for d in a.deps if not by_name[d].out.is_file()]
         if missing:
             print(f"defer  {a.name}: missing deps {missing}")
-            continue
-        if a.needs_region and "npc_region" not in load_layout(a.name.split("/")[0]):
-            print(f"defer  {a.name}: LAYOUT.json has no npc_region yet")
             continue
         print(f"build  {a.name}{' (rederive)' if rederive else ''} …")
         t0 = time.monotonic()

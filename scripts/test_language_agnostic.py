@@ -11,11 +11,12 @@ from core.prompt import build_snapshot, build_system_prompt
 from core.tools import declaration_schemas
 from core.views import public_state
 from core import phrasebook
-from scripts.test_dm_offline import bar_by_tab, market_by_dare
+from scripts.test_dm_offline import found_mei
 from scripts.testkit import ROOT, Checker
 
 T = Checker("test_language_agnostic")
 CONTENT = load_content()
+SCENE_ID = CONTENT.journey.scenes[0]
 SCAN_DIRS = ("core", "server", "media", "web/src")
 SCAN_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".css", ".html", ".json"}
 SKIP_PARTS = {"__pycache__", "node_modules", "fixtures", "dist"}
@@ -35,8 +36,7 @@ def language_names() -> list[str]:
 
 def test_no_literals() -> None:
     names = [n for n in language_names() if not TARGET_SCRIPT.search(n)]
-    T.check("language names come from the content files", {"Mandarin", "Japanese"} <= set(names),
-            names)
+    T.check("language names come from the content files", len(names) >= 4, names)
     name_re = re.compile(r"\b(" + "|".join(map(re.escape, names)) + r")\b", re.IGNORECASE)
     for rel in SCAN_DIRS:
         base = ROOT / rel
@@ -58,7 +58,7 @@ def test_no_literals() -> None:
 
 
 def test_prompt_is_built_from_the_lexicon() -> None:
-    bar = CONTENT.scene("bar")
+    bar = CONTENT.scene(SCENE_ID)
     zh, ja = CONTENT.language("zh-CN"), CONTENT.language("ja-JP")
     zh_prompt = build_system_prompt(CONTENT, bar, zh)
     ja_prompt = build_system_prompt(CONTENT, bar, ja)
@@ -66,47 +66,58 @@ def test_prompt_is_built_from_the_lexicon() -> None:
             zh.name in zh_prompt and zh.romanization.label in zh_prompt  # type: ignore[union-attr]
             and ja.name in ja_prompt and ja.romanization.label in ja_prompt  # type: ignore[union-attr]
             and zh.name not in ja_prompt and ja.name not in zh_prompt)
+    first = bar.targets[0]
     T.check("examples are rendered from the active lexicon only",
-            zh.items["beer"].text in zh_prompt and ja.items["beer"].text in ja_prompt
-            and ja.items["beer"].text not in zh_prompt and zh.items["beer"].text not in ja_prompt)
+            zh.items[first].text in zh_prompt and ja.items[first].text in ja_prompt
+            and ja.items[first].text not in zh_prompt
+            and zh.items[first].text not in ja_prompt)
+    from core.prompt import _plain
     T.check("typed-romanization example strips marks for either language",
-            "`pijiu`" in zh_prompt and "`biru`" in ja_prompt)
+            f"`{_plain(zh.items[first].roman)}`" in zh_prompt
+            and f"`{_plain(ja.items[first].roman)}`" in ja_prompt)
     T.check("the speaker name follows the locale",
             bar.npc.names["zh-CN"] in zh_prompt and bar.npc.names["ja-JP"] in ja_prompt)
+    es = CONTENT.language("es-ES")
+    es_prompt = build_system_prompt(CONTENT, bar, es)
+    T.check("a language with no romanization never promises one",
+            "subtitles with" not in es_prompt and es.items[first].text in es_prompt)
     T.check("tool declarations name the active language, never another",
             ja.name in str(declaration_schemas(bar, ja))
             and zh.name not in str(declaration_schemas(bar, ja)))
     pb = phrasebook.build_prompt(ja, bar, CONTENT)
     T.check("the phrasebook prompt is built from the active lexicon too",
-            ja.name in pb and ja.items["beer"].text in pb and zh.name not in pb
-            and zh.items["beer"].text not in pb)
+            ja.name in pb and ja.items[first].text in pb and zh.name not in pb
+            and zh.items[first].text not in pb)
 
 
-def test_ja_offline_loop() -> None:
+def test_other_language_offline_loop() -> None:
     ja = CONTENT.language("ja-JP")
-    journey, bar = bar_by_tab("ja-JP")
-    journey, market = market_by_dare(journey, "ja-JP")
-    T.check("ja-JP: the scripted story plays through both acts to an ending",
-            bar[-1].scene_complete and market[-1].ending is not None
-            and market[-1].ending.id == "kickoff" and journey.game.wallet == 12)
-    T.check("ja-JP: lines are built from the ja lexicon with its romanization",
-            bar[0].lines[1].text == ja.items["beer"].text
-            and bar[0].lines[1].romanization == ja.items["beer"].roman
-            and bar[0].lines[0].speaker_name == CONTENT.scene("bar").npc.names["ja-JP"])
-    summary = market[-1].summary
+    bar = CONTENT.scene(SCENE_ID)
+    journey, results = found_mei("ja-JP")
+    T.check("ja-JP: the scripted story plays through to the good ending",
+            results[-1].ending is not None and results[-1].ending.id == "found")
+    T.check("ja-JP: lines are built from that lexicon with its romanization",
+            results[0].lines[1].text == ja.items["cheers"].text
+            and results[0].lines[1].romanization == ja.items["cheers"].roman
+            and results[0].lines[0].speaker_name == bar.npc.names["ja-JP"])
+    summary = results[-1].summary
     assert summary is not None
-    T.check("ja-JP: summary items use ja text",
-            {i.item_id: i.text for i in summary.items}["scarf"] == ja.items["scarf"].text)
+    T.check("ja-JP: summary items use that language's text",
+            {i.item_id: i.text for i in summary.items}["go_team"] == ja.items["go_team"].text)
     T.check("ja-JP: same ledger outcomes as any other language",
             journey.vocab["where"].state == "mastered"
-            and journey.vocab["too_expensive"].results[0].outcome == "first_try")
-    fresh, _ = bar_by_tab("ja-JP")
-    snapshot = build_snapshot(fresh, CONTENT, CONTENT.scene("bar"), ja, CONTENT.personas[0], None)
+            and journey.vocab["go_team"].results[0].outcome == "first_try")
+    fresh, _ = found_mei("ja-JP")
+    snapshot = build_snapshot(fresh, bar, ja, None)
     zh_texts = [i.text for i in CONTENT.language("zh-CN").items.values()]
     ja_texts = {i.text for i in ja.items.values()}
     T.check("ja-JP: the snapshot carries no other language's words",
             not any(t in snapshot for t in zh_texts if t not in ja_texts
                     and not any(t in j for j in ja_texts)))
+    for locale in sorted(CONTENT.languages):
+        _, played = found_mei(locale)
+        T.check(f"{locale}: the same code plays the whole act",
+                played[-1].ending is not None and played[-1].ending.id == "found")
 
 
 def test_language_without_romanization() -> None:
@@ -119,14 +130,15 @@ def test_language_without_romanization() -> None:
                for k, v in source.items.items()},
     )
     T.check("a spaced language with no romanization validates", validate_content(content) == [])
-    journey, results = bar_by_tab("xx-XX", content)
+    journey, results = found_mei("xx-XX", content)
     T.check("no romanization: lines have empty romanization and spaced text",
             all(line.romanization == "" and all(s.r == "" for s in line.segments)
                 for r in results for line in r.lines)
-            and results[3].lines[0].text == "wshe wfanzone")
-    prompt = build_system_prompt(content, content.scene("bar"), content.language("xx-XX"))
+            and results[-1].lines[0].text == "wshe wfanzone")
+    prompt = build_system_prompt(content, content.scene(SCENE_ID), content.language("xx-XX"))
+    first = content.scene(SCENE_ID).targets[0]
     T.check("no romanization: the prompt does not promise one",
-            "subtitles with" not in prompt and "`wbeer`" in prompt)
+            "subtitles with" not in prompt and f"`w{first}`" in prompt)
     T.check("public state reports a null romanization label",
             public_state(journey, content).language.romanization_label is None)
     roman = Romanization(system="sys", label="Lbl")
@@ -136,6 +148,6 @@ def test_language_without_romanization() -> None:
 if __name__ == "__main__":
     T.run("no literals", test_no_literals)
     T.run("prompt from lexicon", test_prompt_is_built_from_the_lexicon)
-    T.run("ja-JP offline loop", test_ja_offline_loop)
+    T.run("other-language offline loop", test_other_language_offline_loop)
     T.run("no-romanization language", test_language_without_romanization)
     T.finish()

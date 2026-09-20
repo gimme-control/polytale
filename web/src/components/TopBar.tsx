@@ -1,13 +1,11 @@
-// The chrome during play. Left: where you are and what the story needs from you.
-// Centre: the clock and your cash. Right: help, notebook, history, menu.
+// The chrome during play, at the head of the centred column. Left: where you are and
+// what the story needs from you. Right: help, notebook, history, menu.
 
 import { useCallback, useState } from "react";
 import { useGame } from "../store";
 import { linePlayer } from "../audio/linePlayer";
 import { useDismiss } from "../lib/hooks";
-import { PersonaSwitch } from "./PersonaSwitch";
 import { ClueToast } from "./Notebook";
-import type { Difficulty } from "../lib/types";
 
 export function SceneStatus({ children }: { children?: React.ReactNode }) {
   const scene = useGame((s) => s.scene);
@@ -18,8 +16,7 @@ export function SceneStatus({ children }: { children?: React.ReactNode }) {
     <div data-testid="scene-status" className="over-art min-w-0 sm:max-w-[340px]">
       <h1 className="m-0 truncate text-[15px] font-semibold leading-6 tracking-[-0.01em] text-ink">{scene.name}</h1>
       {children}
-      {/* On a phone the goals run beneath the controls, so they never wrap beside them. */}
-      <ul data-testid="goals" className="m-0 mt-2.5 w-max list-none space-y-1 whitespace-nowrap p-0 sm:mt-1.5">
+      <ul data-testid="goals" className="m-0 mt-2 list-none space-y-1 p-0">
         {scene.goals.map((g) => {
           const ok = done.has(g.id);
           return (
@@ -45,7 +42,6 @@ export function Controls({ onHistory, onNotebook }: { onHistory: () => void; onN
   const helpBusy = useGame((s) => s.helpBusy);
   const phase = useGame((s) => s.phase);
   const requestHelp = useGame((s) => s.requestHelp);
-  const toast = useGame((s) => s.toast);
   const unseen = useGame((s) => Math.max(0, (s.game?.clues.length ?? 0) - s.cluesSeen));
   const hasGame = useGame((s) => !!s.game);
   const next = progress?.next_help ?? null;
@@ -82,11 +78,6 @@ export function Controls({ onHistory, onNotebook }: { onHistory: () => void; onN
       <div className="absolute right-0 top-11">
         <ClueToast />
       </div>
-      {toast && (
-        <p data-testid="toast" role="status" className="rise-in over-art m-0 text-[12px] text-ink-2">
-          {toast}
-        </p>
-      )}
     </div>
   );
 }
@@ -109,18 +100,11 @@ function IconButton({ children, onClick, label, testid, pressed }: { children: R
   );
 }
 
-const DIFFICULTIES: { id: Difficulty; label: string }[] = [
-  { id: "story", label: "Story" },
-  { id: "immersion", label: "Immersion" },
-];
-
 function Menu() {
   const [open, setOpen] = useState(false);
   const [volume, setVolume] = useState(linePlayer.volume);
   const close = useCallback(() => setOpen(false), []);
   const ref = useDismiss(open, close);
-  const difficulty = useGame((s) => s.game?.difficulty ?? null);
-  const setDifficulty = useGame((s) => s.setDifficulty);
   const finishScene = useGame((s) => s.finishScene);
   const restartScene = useGame((s) => s.restartScene);
   const newJourney = useGame((s) => s.newJourney);
@@ -138,32 +122,6 @@ function Menu() {
       </IconButton>
       {open && (
         <div data-testid="menu" role="menu" className="rise-in absolute right-0 top-11 z-10 w-[264px] rounded-[10px] border border-hair bg-[#0e0f0f]/95 p-1.5 backdrop-blur-xl">
-          {difficulty && (
-            <>
-              <div className="px-2.5 pb-1.5 pt-2 text-[12px] text-ink-3">Difficulty</div>
-              <div role="radiogroup" aria-label="Difficulty" data-testid="difficulty-switch" className="mx-1.5 flex h-9 items-center rounded-[8px] border border-hair p-[3px]">
-                {DIFFICULTIES.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={difficulty === d.id}
-                    data-testid={`difficulty-${d.id}`}
-                    data-active={difficulty === d.id ? "1" : "0"}
-                    onClick={() => void setDifficulty(d.id)}
-                    className={`h-full flex-1 rounded-[6px] border-0 text-[13px] font-medium transition-colors duration-150 ${difficulty === d.id ? "bg-ink text-night" : "bg-transparent text-ink-2 hover:text-ink"}`}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="px-2.5 pb-1.5 pt-3 text-[12px] text-ink-3">Character mood</div>
-          <div className="px-1.5 pb-2">
-            <PersonaSwitch full />
-          </div>
-          <div className="mx-2.5 my-1 h-px bg-hair" />
           <label className="flex items-center justify-between gap-4 px-2.5 py-2.5 text-[13px] text-ink-2">
             Volume
             <input

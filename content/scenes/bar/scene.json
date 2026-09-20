@@ -1,285 +1,48 @@
 {
   "id": "bar",
   "name": "The Corner Bar",
-  "tagline": "Match night. Someone here knows where Mei went.",
-  "intro": "19:45, final night. The Corner Bar: the name Mei texted you last week. Scarves and pennants on every wall, the pre-match build-up glowing on the TV, and a man behind the counter polishing a glass like it owes him money. You have her photo, ¥60, and no words at all.",
-  "setting": "A small neighbourhood bar on World Cup final night, seen from a stool at the counter. Team scarves and pennants cover the walls; most of the regulars have already left for the fan zone, a few nervous ones remain. A wall TV shows the pre-match build-up: the empty pitch, pundits, and every few minutes a replay of a famous goal that makes the whole bar shout. The bartender stands behind the counter facing the player. On the back shelf behind him, in plain view: a bottle of beer, a glass of water, a small teapot with a cup, a shot glass of the house baijiu he infuses himself, a closed menu booklet, and, on its own little stand in pride of place, his prized match football. Clipped behind the counter where a customer can see it: one unpaid tab slip (Mei's: ¥40). The player carries a polaroid of Mei in her team scarf, and some cash. That is everything here: no food, no wine, no cocktails, no card reader, no phone to borrow, no other staff. Things happen physically: what is ordered is set on the counter, the photo can be laid on the counter or handed over, the tab slip can be unclipped and put down, the football can (if he ever allows it) be lifted off its stand, cash changes hands over the counter, and the TV can always be pointed at.",
+  "tagline": "Match night. Everyone here knows Mei.",
+  "intro": "Final night, and the corner bar is packed shoulder to shoulder. Scarves and pennants on every wall, the pre-match build-up glowing on the TV, and a room full of supporters who have been here since the afternoon. One of them turns around, sees a stranger, and grins. You have Mei's photo and no words at all.",
+  "setting": "A small neighbourhood bar on World Cup final night, jammed with supporters. Team scarves and pennants cover the walls. A wall TV shows the pre-match build-up: the empty pitch, pundits, and every few minutes a replay of a famous goal that makes the whole room roar and bang the counter. The fans are in team colours, half of them with scarves over their shoulders, singing snatches of a chant whenever the screen shows their side. They are loud, warm, superstitious and completely absorbed in the match. The player is a stranger with a photo, obviously foreign, obviously lost, and the fans find this delightful rather than annoying. That is everything here: no shopping, no money, no menu, no errands. What happens, happens in talk: greeting people, being shown the screen, being taught a chant, being handed a spare scarf, cheering a goal, toasting, getting a word wrong and being cheered for trying anyway.",
   "art": {
     "background": "art/bg.webp",
-    "cover": "art/cover.webp",
-    "moods": {
-      "neutral": "art/bg.webp",
-      "pleased": "art/bg_pleased.webp",
-      "puzzled": "art/bg_puzzled.webp"
-    }
+    "cover": "art/cover.webp"
   },
   "npc": {
-    "id": "bartender",
-    "name": "Chen",
+    "id": "fan",
+    "name": "Tavo",
     "names": {
-      "zh-CN": "老陈",
-      "ja-JP": "マスター"
+      "zh-CN": "阿海",
+      "ja-JP": "ハル",
+      "es-ES": "Tavo",
+      "ko-KR": "준호"
     },
-    "role": "bartender",
-    "character": "Mid-fifties, has run this bar alone for twenty years and has watched every final since he was nine on whatever screen he could find. Dry, unhurried, observant, with a deadpan sense of humour that comes out once he decides he likes someone. A football tragic: superstitious (same shirt under the apron every match day, nobody touches the ball), tense tonight and pretending not to be. Has never left the country and speaks nothing but the local language; good at reading a pointed finger and a hopeful face. Protective of his regulars the way other men are of family.",
-    "voice": {
-      "gemini_voice": "Charon",
+    "role": "football fan",
+    "character": "Thirties, in the team shirt he has worn for every big match for nine years, scarf already round his neck four hours before kickoff. The loudest and friendliest of the group at the end of the bar. Superstitious, sentimental about the game, quick to laugh, quicker to put an arm round a stranger's shoulder. He has watched every final of his life in this room. He speaks nothing but the local language and it does not slow him down for a second: he points at the screen, mimes, repeats himself louder, and treats every word the player manages as a small victory worth toasting. He knows Mei the way regulars know each other, and he is protective of her in a cheerful, nosy way.",
+  "voice": {
+      "gemini_voice": "Puck",
       "elevenlabs_voice_id": "",
-      "style": "A man in his fifties tending a neighbourhood bar late at night: relaxed, low, a little gravelly, unhurried. Natural conversational speed, not a language lesson."
+      "style": "A man in his thirties in a loud bar on the night of a big match: warm, boisterous, quick, often half-laughing, pitched to carry over a crowd. Natural conversational speed, not a language lesson."
     },
     "anchor": {
       "x": 0.5,
       "y": 0.262
     },
-    "wants": "His team to win, a settled till, and his regulars safe. He is sore about one unpaid tab tonight (not the money: the hurry she left in). He is privately proud of two things: the house baijiu he infuses himself, which nobody orders, and the match football on the shelf, caught in the stands at a final thirty years ago. A customer who admires the ball from a respectful distance, or cheers when the goal replays on the TV, or toasts his team with him, has a friend for life; a customer who GRABS the ball is dead to him for at least ten minutes. He likes manners: a greeting, a thank-you, paying without fuss. He dislikes being shouted at in a foreign language or having a photo waved in his face before anyone has even ordered.",
-    "secrets": "He knows Mei well: she has watched every big match here for two years. Tonight she sat at the end of the counter from six, watching the door for a friend who never showed; around eight she swore, grabbed her bag and ran for the fan zone to hold their spots, WITHOUT paying (¥40, the first time ever). She said she would stop at Lin's stall on the edge of the fan zone first, as she always does before a big match. He does not hand a young woman's whereabouts to a stranger holding her photo. He opens up once the stranger has shown they are decent: settling her tab says it fastest; being good company on match night says it too (a toast to his team, a cheer at the replayed goal, respect for the ball); sharing his baijiu says it his favourite way.",
+    "wants": "His team to win, and everyone in the room to want it as badly as he does. He is privately certain that the result depends on doing things exactly right: the same shirt, the same chant at the same moment, nobody jinxing it. A stranger who joins in has a friend for life: cheering the replayed goal, learning the chant, wearing a spare scarf, toasting the team. He loves teaching the chant most of all. He dislikes nothing much, except being ignored while the screen is showing his side.",
+    "secrets": "He knows Mei well: she watches every big match in this bar and has done for two years. Tonight she sat with them from six, watching the door for a friend who never showed, and around eight she gave up and went with the crowd to the fan zone to hold their spots. She is at gate 2, under the big screen, in her team scarf. He will not send a stranger after one of their own on the strength of a photo alone, but the bar is not a suspicious place tonight, only a busy one: once the stranger shows he is here for the football, he will tell him exactly where she is, draw the route on the counter with a finger, and send half the bar out of the door with him.",
     "trust": 0
   },
-  "zones": [
-    "display",
-    "counter",
-    "npc",
-    "inventory",
-    "gone"
-  ],
-  "objects": [
-    {
-      "id": "beer",
-      "item_id": "beer",
-      "art": "art/obj_beer.png",
-      "zone": "display",
-      "price": 20,
-      "positions": {
-        "display": {
-          "x": 0.175,
-          "y": 0.552,
-          "h": 0.16
-        },
-        "counter": {
-          "x": 0.385,
-          "y": 0.885,
-          "h": 0.31
-        }
-      },
-      "actions": [
-        "point",
-        "drink"
-      ]
-    },
-    {
-      "id": "water",
-      "item_id": "water",
-      "art": "art/obj_water.png",
-      "zone": "display",
-      "price": 5,
-      "positions": {
-        "display": {
-          "x": 0.235,
-          "y": 0.552,
-          "h": 0.106
-        },
-        "counter": {
-          "x": 0.48,
-          "y": 0.895,
-          "h": 0.205
-        }
-      },
-      "actions": [
-        "point",
-        "drink"
-      ]
-    },
-    {
-      "id": "tea",
-      "item_id": "tea",
-      "art": "art/obj_tea.png",
-      "zone": "display",
-      "price": 15,
-      "positions": {
-        "display": {
-          "x": 0.315,
-          "y": 0.555,
-          "h": 0.083
-        },
-        "counter": {
-          "x": 0.59,
-          "y": 0.89,
-          "h": 0.161
-        }
-      },
-      "actions": [
-        "point",
-        "drink"
-      ]
-    },
-    {
-      "id": "baijiu",
-      "item_id": "baijiu",
-      "art": "art/obj_baijiu.png",
-      "zone": "display",
-      "price": 15,
-      "actions": [
-        "point",
-        "drink"
-      ],
-      "positions": {
-        "display": {
-          "x": 0.4,
-          "y": 0.555,
-          "h": 0.06
-        },
-        "counter": {
-          "x": 0.7,
-          "y": 0.9,
-          "h": 0.12
-        }
-      }
-    },
-    {
-      "id": "menu",
-      "item_id": "menu",
-      "art": "art/obj_menu.png",
-      "zone": "display",
-      "positions": {
-        "display": {
-          "x": 0.7,
-          "y": 0.555,
-          "h": 0.162
-        },
-        "counter": {
-          "x": 0.15,
-          "y": 0.9,
-          "h": 0.324
-        }
-      },
-      "actions": [
-        "point",
-        "take"
-      ]
-    },
-    {
-      "id": "tab",
-      "item_id": "tab",
-      "art": "art/obj_tab.png",
-      "zone": "display",
-      "price": 40,
-      "actions": [
-        "point",
-        "pay"
-      ],
-      "positions": {
-        "display": {
-          "x": 0.6,
-          "y": 0.5,
-          "h": 0.09
-        },
-        "counter": {
-          "x": 0.28,
-          "y": 0.92,
-          "h": 0.16
-        },
-        "npc": {
-          "x": 0.56,
-          "y": 0.7,
-          "h": 0.1
-        }
-      }
-    },
-    {
-      "id": "football",
-      "item_id": "football",
-      "art": "art/obj_football.png",
-      "zone": "display",
-      "actions": [
-        "point",
-        "take"
-      ],
-      "positions": {
-        "display": {
-          "x": 0.5,
-          "y": 0.5,
-          "h": 0.12
-        },
-        "counter": {
-          "x": 0.62,
-          "y": 0.9,
-          "h": 0.2
-        }
-      }
-    },
-    {
-      "id": "tv",
-      "item_id": "tv",
-      "art": "art/obj_tv.png",
-      "zone": "display",
-      "actions": [
-        "point"
-      ],
-      "positions": {
-        "display": {
-          "x": 0.84,
-          "y": 0.3,
-          "h": 0.22
-        }
-      }
-    },
-    {
-      "id": "photo",
-      "item_id": "friend",
-      "art": "art/obj_photo.png",
-      "zone": "inventory",
-      "actions": [
-        "show",
-        "give"
-      ],
-      "positions": {
-        "counter": {
-          "x": 0.52,
-          "y": 0.93,
-          "h": 0.16
-        },
-        "npc": {
-          "x": 0.56,
-          "y": 0.7,
-          "h": 0.1
-        }
-      }
-    },
-    {
-      "id": "money",
-      "item_id": "money",
-      "art": "art/obj_money.png",
-      "zone": "inventory",
-      "positions": {
-        "counter": {
-          "x": 0.83,
-          "y": 0.9,
-          "h": 0.102
-        },
-        "npc": {
-          "x": 0.655,
-          "y": 0.775,
-          "h": 0.073
-        }
-      },
-      "actions": [
-        "pay"
-      ]
-    }
-  ],
   "targets": [
     "hello",
     "thanks",
     "friend",
     "where",
-    "want",
-    "beer",
-    "baijiu",
-    "how_much",
-    "money",
+    "seen",
     "cheers",
-    "football",
-    "goal"
+    "goal",
+    "go_team",
+    "fan_zone",
+    "awesome"
   ],
   "goals": [
     {
@@ -291,71 +54,53 @@
     },
     {
       "id": "trail",
-      "label": "Find out where Mei went",
+      "label": "Find out where Mei is",
       "when": {
-        "clue": "stall"
+        "clue": "gate"
       }
     }
   ],
   "support_words": [
-    "water",
-    "tea",
-    "menu",
-    "this",
     "yes",
+    "no",
     "good",
-    "no_want",
-    "photo",
-    "tab",
-    "tv",
-    "match",
-    "go_team",
-    "fan_zone",
+    "sorry",
+    "mate",
     "she",
-    "seen",
     "left",
-    "one_more",
-    "kuai",
-    "five",
-    "fifteen",
-    "twenty",
-    "forty"
+    "photo",
+    "match",
+    "team",
+    "tonight",
+    "gate",
+    "here",
+    "scarf",
+    "win"
   ],
   "flags": [
     {
       "id": "photo_shown",
-      "when": "the player has shown or handed the bartender Mei's photo"
-    },
-    {
-      "id": "tab_paid",
-      "when": "the player has paid Mei's unpaid tab",
-      "requires_paid": [
-        "tab"
-      ]
-    },
-    {
-      "id": "drank_baijiu",
-      "when": "the player has drunk the house baijiu"
+      "when": "the player has shown or handed the fans Mei's photo"
     },
     {
       "id": "cheered",
-      "when": "the player has joined in: cheered the replayed goal, toasted his team, or admired the match ball from a respectful distance (pointing at it counts; grabbing it does not)"
+      "when": "the player has joined in with the room: cheered the replayed goal, banged the counter with them, or toasted the team"
     },
     {
-      "id": "ball_grabbed",
-      "when": "the player has tried to take the match football off its stand (he takes it straight back; this costs trust)"
+      "id": "chanted",
+      "when": "the player has tried the chant the fans are teaching, however badly"
     },
     {
-      "id": "tipsy",
-      "when": "the player has drunk a beer or a baijiu; from then on the narration is a little looser and braver"
+      "id": "scarf_worn",
+      "when": "the player has taken and put on the spare scarf the fans offer"
     }
   ],
   "clues": [
     {
       "id": "regular",
-      "title": "He knows her",
-      "text": "The bartender recognised Mei's photo at once. She watches every big match here. He is still deciding whether you are good news.",
-      "gm_note": "Comes out the moment he sees the photo: a flicker he cannot hide, 'your friend?'. He confirms he knows her; not yet where she is.",
+      "title": "They know her",
+      "text": "The fans recognised Mei's photo instantly. She watches every big match in this bar. Half the room started talking at once.",
+      "gm_note": "Comes out the moment they see the photo: shouting, pointing, 'our Mei!'. They confirm they know her; not yet where she is.",
       "key_items": [],
       "reveal_when": [
         {
@@ -368,8 +113,8 @@
     {
       "id": "waited",
       "title": "She waited for you",
-      "text": "Mei sat at this counter for two hours tonight, watching the door. Then she ran for the fan zone, without paying.",
-      "gm_note": "He nods at the empty stool at the end of the counter, the clock, the tab slip.",
+      "text": "Mei sat with them from six, watching the door. When the crowd left for the fan zone she went too, to hold your spots.",
+      "gm_note": "He nods at the empty stool, then at the door, then at the clock over the bar.",
       "key_items": [],
       "reveal_when": [
         {
@@ -377,29 +122,18 @@
             "photo_shown"
           ],
           "trust_at_least": 1
-        },
-        {
-          "flags": [
-            "tab_paid"
-          ]
         }
       ]
     },
     {
-      "id": "stall",
-      "title": "Lin's stall",
-      "text": "Mei went to the fan zone to hold your spots, and she always stops at Lin's food stall on the edge of it first. Ten minutes on foot.",
-      "gm_note": "He says where she went (the fan zone, Lin's stall), points the way out of the door, and tells them to run. This ends the act.",
+      "id": "gate",
+      "title": "Gate 2",
+      "text": "Mei is in the fan zone at gate 2, under the big screen, in her team scarf. Five minutes on foot, and half this bar is going that way.",
+      "gm_note": "He says exactly where she is, draws the route on the counter with a finger, and sends the player out of the door with the crowd. This ends the night.",
       "key_items": [
         "fan_zone"
       ],
       "reveal_when": [
-        {
-          "flags": [
-            "photo_shown",
-            "tab_paid"
-          ]
-        },
         {
           "flags": [
             "photo_shown"
@@ -409,7 +143,7 @@
         {
           "flags": [
             "photo_shown",
-            "drank_baijiu"
+            "chanted"
           ],
           "trust_at_least": 1
         },
@@ -417,6 +151,13 @@
           "flags": [
             "photo_shown",
             "cheered"
+          ],
+          "trust_at_least": 1
+        },
+        {
+          "flags": [
+            "photo_shown",
+            "scarf_worn"
           ],
           "trust_at_least": 1
         }

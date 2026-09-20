@@ -1,0 +1,41 @@
+{
+  "locale": "es-ES",
+  "name": "Spanish",
+  "native_name": "Español",
+  "romanization": null,
+  "word_spacing": true,
+  "currency_symbol": "€",
+  "typing_note": "Learners often type Spanish without accents or the opening question mark (\"donde esta\", \"que crack\", \"si\"). Treat it as the word itself.",
+  "phrasebook_voice": {
+    "gemini_voice": "Leda",
+    "elevenlabs_voice_id": "",
+    "style": "A clear, neutral, friendly voice saying one short phrase at an easy pace, for someone to copy."
+  },
+  "items": {
+    "hello": { "text": "hola", "roman": "", "gloss": "hello", "kind": "phrase" },
+    "thanks": { "text": "gracias", "roman": "", "gloss": "thanks", "kind": "phrase" },
+    "friend": { "text": "amiga", "roman": "", "gloss": "friend (female)", "kind": "noun" },
+    "where": { "text": "dónde está", "roman": "", "gloss": "where is (she)?", "kind": "phrase", "learner_side": true },
+    "seen": { "text": "has visto", "roman": "", "gloss": "have you seen", "kind": "verb", "learner_side": true },
+    "cheers": { "text": "salud", "roman": "", "gloss": "cheers! (toast)", "kind": "phrase" },
+    "goal": { "text": "gol", "roman": "", "gloss": "goal!", "kind": "phrase" },
+    "go_team": { "text": "vamos", "roman": "", "gloss": "come on! let's go! (the chant)", "kind": "slang" },
+    "fan_zone": { "text": "la zona de aficionados", "roman": "", "gloss": "the fan zone", "kind": "noun" },
+    "awesome": { "text": "brutal", "roman": "", "gloss": "amazing, unreal (slang)", "kind": "slang" },
+    "yes": { "text": "sí", "roman": "", "gloss": "yes", "kind": "phrase" },
+    "no": { "text": "no", "roman": "", "gloss": "no", "kind": "phrase" },
+    "good": { "text": "bien", "roman": "", "gloss": "good, fine", "kind": "adjective" },
+    "sorry": { "text": "perdona", "roman": "", "gloss": "sorry", "kind": "phrase" },
+    "mate": { "text": "tío", "roman": "", "gloss": "mate, dude (slang)", "kind": "slang" },
+    "she": { "text": "ella", "roman": "", "gloss": "she, her", "kind": "pronoun" },
+    "left": { "text": "se fue", "roman": "", "gloss": "(she) left, has gone", "kind": "verb" },
+    "photo": { "text": "la foto", "roman": "", "gloss": "photo", "kind": "noun" },
+    "match": { "text": "el partido", "roman": "", "gloss": "the match", "kind": "noun" },
+    "team": { "text": "el equipo", "roman": "", "gloss": "the team", "kind": "noun" },
+    "tonight": { "text": "esta noche", "roman": "", "gloss": "tonight", "kind": "noun" },
+    "gate": { "text": "la puerta dos", "roman": "", "gloss": "gate 2", "kind": "noun" },
+    "here": { "text": "aquí", "roman": "", "gloss": "here", "kind": "noun" },
+    "scarf": { "text": "la bufanda", "roman": "", "gloss": "(football) scarf", "kind": "noun" },
+    "win": { "text": "ganar", "roman": "", "gloss": "to win", "kind": "verb" }
+  }
+}

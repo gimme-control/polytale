@@ -1,50 +1,30 @@
 {
-  "title": "Kickoff",
-  "tagline": "Find Mei before the whistle.",
+  "title": "Match Night",
+  "tagline": "Find Mei before the final starts.",
   "art": "title.webp",
-  "premise": "It is World Cup final night. You flew in to watch it with Mei on the big screen in the fan zone, and she has your ticket. Your flight was late, your phone is dead, and all you have is a photo of Mei in her team scarf, ¥60, and the name of a bar she likes. Kickoff is at 21:00. Nobody here speaks English.",
-  "gm_brief": "THE TRUTH. Mei is the player's old friend; she lives here and has not missed a big match in years. The plan was to meet at Chen's bar at six, then walk to the fan zone together for the World Cup final on the big screen; Mei holds both tickets. She waited two hours at the bar, decided the player's flight was hopeless, and left in a hurry to claim their spots, forgetting to pay her tab. On the way in she stopped, as she does before every big match (superstition: dumplings, extra chili), at Lin's food stall on the edge of the fan zone. There she left her team scarf by accident and, on purpose, the player's spare ticket: 'if a lost-looking foreigner turns up with my photo, give them this.' She is now inside, gate 2, under the big screen. The player's phone is dead; none of this is anyone's fault, which is what makes it funny. THE CHAIN. Bar: Chen knows where she went (Lin's stall by the fan zone) but does not hand a regular's whereabouts to a stranger, and he is sore about the tab. Stall: Lin holds the scarf and the ticket and will not give a ticket for the final to just anyone: they must prove they know Mei, and be someone she likes. Each of them can be won more than one way: money, manners, nerve, football. Each has pride and a sense of humour; play that. TONE. Match-night energy: banter, superstition, nerves, a whole city holding its breath, the clock as kickoff pressure. Warm and wry, never grim, never slapstick. No real teams, players or brands: it is 'the final', 'his team', 'the reds'. The player can be clumsy, rude or broke and the story still moves: doors close, other doors open, the clock keeps running. RESOURCES. ¥60 has to cover both acts; every turn costs minutes. Drinking alcohol makes the narration looser and a touch braver from then on (never incapable).",
-  "wallet": 60,
-  "clock": {
-    "label": "Kickoff",
-    "start": "19:45",
-    "end": "21:00",
-    "minutes_per_turn": 3
-  },
+  "premise": "It is World Cup final night and the whole city is out. You flew in to watch it with your friend Mei, and she has your ticket. Your flight was late, your phone is dead, and all you have is a photo of Mei in her team scarf and the name of a bar she likes. The bar is packed with fans. Nobody here speaks English.",
+  "gm_brief": "THE TRUTH. Mei is the player's old friend; she lives here and has not missed a big match in years. The plan was to meet at this bar before the final and walk to the fan zone together; Mei holds both tickets. She waited, decided the player's flight was hopeless, and left with the crowd to claim their spots. She is now in the fan zone, gate 2, under the big screen, wearing her team scarf. THE ROOM. The bar is full of supporters watching the pre-match build-up: scarves, chanting, nerves, superstition, a television nobody looks away from. The player talks to the fans. They are loud, warm, a little drunk on the occasion, and delighted by a foreigner who is trying. THE CHAIN. The fans recognise Mei from the photo at once (she is a regular, she is one of them). They will not send a stranger after one of their own until they have decided he is all right, and on a night like this 'all right' means one thing: he is here for the football. Cheer a goal on the replay, chant with them, take the scarf they offer, toast them, get a word wrong and laugh about it. Do that and they will tell him exactly where she is: fan zone, gate 2. TONE. Match-night energy: banter, superstition, songs, a whole city holding its breath. Warm and wry, never grim. No real teams, players or brands: it is 'the final', 'our lot', 'the reds'. The player can be clumsy or shy and the night still carries them along. LANGUAGE. The fans speak only the local language and they speak it the way fans do: short, loud, full of slang. They repeat themselves happily, point at the screen, mime, and cheer anything the player manages to say. Getting a word wrong is funny here, never shameful.",
   "scenes": [
-    "bar",
-    "market"
+    "bar"
   ],
   "endings": [
     {
-      "id": "kickoff",
-      "title": "Kickoff",
+      "id": "found",
+      "title": "Gate 2",
       "art": "art/ending_kickoff.webp",
-      "when": {
-        "clues": [
-          "gate"
-        ],
-        "minutes_left_at_least": 15
-      },
-      "text": "Gate 2, a sea of red, the big screen bright as daylight. She is standing on a plastic chair so you cannot miss her. \"You are FOUR HOURS late,\" Mei yells, hauling you up beside her, and then the whole square goes quiet the way only a final can. The whistle goes. You made it. You have no idea what anyone around you is shouting, and you are shouting it too."
-    },
-    {
-      "id": "late",
-      "title": "First Goal",
-      "art": "art/ending_late.webp",
       "when": {
         "clues": [
           "gate"
         ]
       },
-      "text": "You are still shoving through gate 2 when the square erupts: a roar you feel in your teeth. You missed kickoff. You missed the first goal. You find Mei by the sound of her voice, hoarse already; she presses a cold beer into your hand without taking her eyes off the screen. \"You owe me,\" she says, grinning. There are eighty minutes left, and they are the best of your year."
+      "text": "\"Gate two!\" the whole corner of the bar shouts at once, half of them pointing the same way, one of them already pulling you toward the door. You come out into the noise of the square with a borrowed scarf around your neck and a chant you half know stuck in your head. She is standing on a plastic chair under the big screen so nobody could miss her. \"You are FOUR HOURS late,\" Mei yells, hauling you up beside her, and then the square goes quiet the way only a final can."
     },
     {
       "id": "outside",
-      "title": "Outside the Fence",
+      "title": "Outside the Noise",
       "art": "art/ending_late.webp",
       "when": {},
-      "text": "The whistle goes without you. No ticket, no Mei; you watch the final through a gap in the fence with a hundred other unlucky souls, one of whom shares his sunflower seeds. At full time the gates open and the crowd pours out singing, and there she is, scarfless, furious, laughing. \"I left you a TICKET,\" Mei says. \"With the dumpling lady!\" Next time, you will know to ask."
+      "text": "The bar empties around you in a surge of scarves and singing, and you are carried out with it without ever having asked the one question that mattered. You watch the first half through a gap in the fence with a hundred other unlucky souls, one of whom shares his sunflower seeds. At full time the crowd pours out singing and there she is, hoarse, furious, laughing. \"I waited for you,\" Mei says. \"You had to ask ONE person!\" Next time, you will know how."
     }
   ]
 }

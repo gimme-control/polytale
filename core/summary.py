@@ -40,12 +40,13 @@ def _lines(journey: Journey, content: Content, items: list[SummaryItem]) -> list
         lines.append(f"You said {_listed(produced)} yourself.")
     for item in items:
         if item.recall:
-            origin = content.scene(journey.vocab[item.item_id].first_scene).name
+            first = journey.vocab[item.item_id].first_scene
+            origin = content.scenes[first].name if first in content.scenes else first
             lines.append(f"{item.text} came back from {origin} and you got it with no hints.")
     shaky = [i.text for i in items if i.state == "shaky"]
     if shaky:
         verb = "needs" if len(shaky) == 1 else "need"
-        lines.append(f"{_listed(shaky)} still {verb} a second look; expect a highlight next time.")
+        lines.append(f"{_listed(shaky)} still {verb} a second look.")
     return lines
 
 

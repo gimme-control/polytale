@@ -13,6 +13,7 @@ from scripts.testkit import Checker, FakeClient
 
 T = Checker("test_phrasebook")
 CONTENT = load_content()
+SCENE_ID = CONTENT.journey.scenes[0]
 ZH = CONTENT.language("zh-CN")
 MODELS = ["fast-a", "fast-b"]
 
@@ -65,15 +66,15 @@ def test_lookup() -> None:
     result, _ = vocab.record_result(j2, item_id="where", understood=True, produced=True,
                                     attempt_id="a1")
     T.check("...so saying it next stamps with_help, by code", result.outcome == "with_help")
-    T.check("a lookup costs no turn and no clock",
-            j2.game.minutes_used == 0 and j2.scene.turn == j.scene.turn)  # type: ignore[union-attr]
+    T.check("a lookup costs no turn",
+            j2.scene.turn == j.scene.turn)  # type: ignore[union-attr]
     T.check("find_phrase resolves by id", phrasebook.find_phrase(j2, phrase.phrase_id) == phrase
             and phrasebook.find_phrase(j2, "p-nope") is None)
     sent = client.models.calls[0]
     system = sent["config"].system_instruction
     T.check("the prompt is scene-aware and leans on the scene's words",
-            CONTENT.scene("bar").name in system and ZH.items["baijiu"].text in system
-            and ZH.items["noodles"].text not in system and "".join(sent["contents"]) == "where is she?")
+            CONTENT.scene(SCENE_ID).name in system and ZH.items["cheers"].text in system
+            and "".join(sent["contents"]) == "where is she?")
     T.check("structured output is requested",
             sent["config"].response_mime_type == "application/json")
 
@@ -81,8 +82,8 @@ def test_lookup() -> None:
 def test_refusals() -> None:
     j = in_bar()
     for label, text, code in (("empty", "   ", "empty"),
-                              ("target-language input", ZH.items["beer"].text, "target_language"),
-                              ("mixed input", "what is " + ZH.items["beer"].text, "target_language")):
+                              ("target-language input", ZH.items["cheers"].text, "target_language"),
+                              ("mixed input", "what is " + ZH.items["cheers"].text, "target_language")):
         client = FakeClient([])
         try:
             phrasebook.lookup(j, CONTENT, text, client=client, models=MODELS)
@@ -99,13 +100,13 @@ def test_refusals() -> None:
                 exc.code == "not_a_phrase" and len(client.models.calls) == 1)
     T.check("nothing was stored by any refusal", j.game.phrasebook == [])
     T.check("the prompt tells the model what to refuse",
-            "translate the other person" in phrasebook.build_prompt(ZH, CONTENT.scene("bar"),
-                                                                    CONTENT))
+            "translate the other person" in phrasebook.build_prompt(
+                ZH, CONTENT.scene(SCENE_ID), CONTENT))
 
 
 def test_bad_output_cascades() -> None:
     j = in_bar()
-    good = {"refused": False, "segments": [seg("beer", "beer")]}
+    good = {"refused": False, "segments": [seg("cheers", "cheers")]}
     for label, bad in (
         ("not JSON", Text("sorry!")),
         ("no segments", Text({"refused": False, "segments": []})),
@@ -114,17 +115,17 @@ def test_bad_output_cascades() -> None:
         ("word without romanization", Text({"refused": False, "segments": [
             {"t": "慢", "r": "", "g": "slow"}]})),
         ("word glued to punctuation", Text({"refused": False, "segments": [
-            {"t": ZH.items["beer"].text + "？", "r": "x", "g": "beer"}]})),
-        ("far too long", Text({"refused": False, "segments": [seg("beer")] * 13})),
+            {"t": ZH.items["cheers"].text + "？", "r": "x", "g": "cheers"}]})),
+        ("far too long", Text({"refused": False, "segments": [seg("cheers")] * 13})),
         ("provider error", RuntimeError("503 unavailable")),
     ):
         client = FakeClient([bad, Text(good)])
-        _, phrase = phrasebook.lookup(j, CONTENT, "a beer", client=client, models=MODELS)
+        _, phrase = phrasebook.lookup(j, CONTENT, "cheers", client=client, models=MODELS)
         T.check(f"{label}: falls through to the next model",
                 [c["model"] for c in client.models.calls] == MODELS
-                and phrase.text == ZH.items["beer"].text)
+                and phrase.text == ZH.items["cheers"].text)
     try:
-        phrasebook.lookup(j, CONTENT, "a beer", models=MODELS,
+        phrasebook.lookup(j, CONTENT, "cheers", models=MODELS,
                           client=FakeClient([Text("x"), RuntimeError("boom")]))
         T.check("every model failing raises PhraseError", False)
     except phrasebook.PhraseError:
@@ -147,18 +148,18 @@ def test_outside_play() -> None:
             len(j.game.phrasebook) == phrasebook.MAX_KEPT
             and j.game.phrasebook[-1].source == f"hello {phrasebook.MAX_KEPT + 2}")
     T.check("an over-long ask is trimmed, not refused",
-            len(phrasebook.lookup(j, CONTENT, "beer " * 100, models=MODELS, client=FakeClient(
-                [Text({"refused": False, "segments": [seg("beer")]})]))[1].source)
+            len(phrasebook.lookup(j, CONTENT, "cheers " * 100, models=MODELS, client=FakeClient(
+                [Text({"refused": False, "segments": [seg("cheers")]})]))[1].source)
             <= phrasebook.MAX_SOURCE_CHARS)
     ja_journey = enter_scene(new_journey(CONTENT, "pb3", language="ja-JP"), CONTENT)
     ja = CONTENT.language("ja-JP")
-    _, ja_phrase = phrasebook.lookup(ja_journey, CONTENT, "a beer please", models=MODELS,
+    _, ja_phrase = phrasebook.lookup(ja_journey, CONTENT, "cheers mate", models=MODELS,
                                      client=FakeClient([Text({"refused": False, "segments": [
-                                         {"t": ja.items["beer"].text, "r": "x", "g": "beer"},
-                                         {"t": ja.items["want"].text, "r": "y", "g": "please"}]})]))
+                                         {"t": ja.items["cheers"].text, "r": "x", "g": "cheers"},
+                                         {"t": ja.items["mate"].text, "r": "y", "g": "mate"}]})]))
     T.check("the same code serves another language from its own lexicon",
-            ja_phrase.romanization == f"{ja.items['beer'].roman} {ja.items['want'].roman}"
-            and set(ja_phrase.item_ids) == {"beer", "want"})
+            ja_phrase.romanization == f"{ja.items['cheers'].roman} {ja.items['mate'].roman}"
+            and set(ja_phrase.item_ids) == {"cheers", "mate"})
 
 
 if __name__ == "__main__":

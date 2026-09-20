@@ -1,46 +1,48 @@
 # Polytale
 
-**Learn a language by needing it.** Polytale drops you into a concrete situation, such as a
-late-night bar or a night-market stall, where the only other person speaks the language you are
-learning. You get things done by speaking, typing, or pointing. Nothing is translated. You work
-out what words mean from what you can see, and the scene changes when you are understood.
+**Learn a language by needing it.** Polytale drops you into a concrete situation — a bar packed
+with football fans on World Cup final night — where nobody speaks your language. You get what you
+need by talking. Nothing is translated. You work out what words mean from what is happening, and
+the night moves when you are understood.
 
-The demo language is Mandarin Chinese. The engine is language-agnostic: a language is one JSON
-file (`content/languages/<locale>.json`) and scenes are language-neutral.
+The engine is language-agnostic: a language is one JSON file
+(`content/languages/<locale>.json`) and the scene is language-neutral. Four ship today —
+Mandarin, Japanese, Spanish and Korean — and you pick one before you start.
 
 ## What playing it is like
 
-- You sit down at the bar. The bartender says something, generated live, and glances at the
-  shelf: 「啤酒？」 *píjiǔ?* The beer bottle lights up. 「水？」 *shuǐ?* The glass lights up.
-- You say "píjiǔ", type `pijiu`, or click the bottle. He slides it across the counter.
-- You want to pay. You try 「多少钱？」 or point at your wallet. He tells you the price, you hand
-  over the notes, and the scene is done.
-- Only then do you see the word list: what you met, what you got first try, what needed a repeat
-  or a hint.
-- The next scene is a night-market stall. The words you mastered at the bar come back with no
-  highlight and no hint. Getting them anyway is the proof that you learned them.
+- You push into a bar full of supporters. One of them turns round, sees a stranger, and grins.
+  He says something, generated live, and points at the TV.
+- You show him a photo of your friend Mei. Half the room starts shouting at once: they all know
+  her.
+- They will not send a stranger after one of their own until they have decided you are all right,
+  and tonight that means one thing: you are here for the football. Cheer the goal on the replay.
+  Try the chant they are teaching you, badly. Take the spare scarf. Toast the team.
+- Then they tell you exactly where she is — fan zone, gate 2 — and half the bar walks you there.
+- Only at the end do you see the word list: what you met, what you got first try, what needed a
+  repeat or a hint.
 
-You can change the character's personality at any time (warm, brisk, unhinged). That changes how
-they talk to you and never what the scene teaches. Try English on them: they won't understand,
-and they won't break character.
+It is built to be played in about five minutes.
 
 ## How it works
 
 - **The LLM plays the character; code owns the ledgers.** A Gemini model reads a scene snapshot
-  and commits every change through typed tools (`move_object`, `record_item`, `complete_goal`,
-  `say`). Executors validate ids and apply deterministic rules. Model prose is never inspected or
-  rewritten.
+  and commits every change through typed tools (`record_item`, `adjust_trust`, `reveal_clue`,
+  `set_flag`, `say`). Executors validate ids and apply deterministic rules. Model prose is never
+  inspected or rewritten.
 - **Mastery falls out of play.** The server tracks how much help each exchange needed. A correct
-  response with no help marks the word mastered. One that needed a repeat, a highlight, or an
-  intent hint marks it shaky, and so does a miss. Mastered words can no longer be highlighted;
-  the tool layer refuses.
-- **Help is two steps:** hear it again slowly with the objects lit, then a hint about what the
-  character wants. There is never a translation.
+  response with no help marks the word mastered; one that needed a repeat or an intent hint marks
+  it shaky, and so does a miss. Mastered words can no longer be highlighted; the tool layer
+  refuses.
+- **Help is two steps:** hear it again slowly, then a hint about what the character wants. There
+  is never a translation.
+- **Slang is the point.** Each language file carries what fans actually shout — 加油, がんばれ,
+  ¡vamos!, 화이팅 — alongside the plain words, so what you learn is what you would really hear.
 - **Speech:** character lines are text first and audio right after (ElevenLabs when
-  `ELEVENLABS_API_KEY` is set, otherwise Gemini), with per-word romanization drawn over the text.
-  You can type, or hold the mic or Space to talk; "Heard: …" can be cancelled before it counts.
-- **Art is pre-generated** (`scripts/generate_art.py`). Highlights are drawn by the client, never
-  by an image model.
+  `ELEVENLABS_API_KEY` is set, otherwise Gemini), with per-word romanization drawn over the text
+  for the languages that need it. You can type, or hold the mic or Space to talk; "Heard: …" can
+  be cancelled before it counts.
+- **Art is pre-generated** (`scripts/generate_art.py`), never drawn at runtime.
 
 `SPEC.md` is the build contract, `docs/PRD.md` the product doc, `AGENTS.md` the conventions.
 
@@ -53,7 +55,7 @@ bash run.sh                     # http://localhost:5180  (API on :8100)
 bash run.sh --stop
 ```
 
-`?mock=1` runs the client against an in-browser mock of the API.
+`?mock=1` runs the client against an in-browser mock of the API, with no keys and no cost.
 
 ## Tests
 
@@ -62,5 +64,12 @@ Standalone scripts, no pytest: `PYTHONPATH=. ~/.venvs/polytale/bin/python script
 Offline: `verify_imports`, `test_content`, `test_vocab`, `test_tools`, `test_dm_offline`,
 `test_summary`, `test_language_agnostic`, `test_speech_providers`, `test_server_api`,
 `test_web_contract`, `test_run_sh`, `test_matte`.
-Live (needs keys; a running server for the playtests): `test_dm_live`, `test_speech_live`,
-`playtest_voice_live`, `playtest_browser_live`, `playtest_web_mock`.
+`test_dm_offline` plays the whole demo (photo → chant → trust → gate → the `found` ending), and
+`test_language_agnostic` runs it in all four locales.
+
+Live (needs keys): `test_speech_live`.
+
+The live DM, live voice and browser playtests (`test_dm_live`, `playtest_voice_live`,
+`playtest_browser_live`, `playtest_web_mock`) were built around items, cash, the clock,
+difficulty modes and personas. They were removed with those features and still need
+re-authoring against the streamlined shape.

@@ -186,7 +186,7 @@ def lookup(
     models: list[str] | None = None,
 ) -> tuple[Journey, Phrase]:
     """Look up how to say ``text``. Returns ``(new_journey, Phrase)``; the input is untouched.
-    Costs no turn and no clock. Raises like ``translate``."""
+    Costs no turn. Raises like ``translate``."""
     phrase = translate(journey, content, text, client=client, models=models)
     working = journey.model_copy(deep=True)
     remember(working, phrase)

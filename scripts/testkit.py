@@ -88,17 +88,18 @@ class FakeClient:
         self.models = FakeModels(script)
 
 
-def lexicon_line(language: Any, item_ids: list[str], highlight: list[str] | None = None) -> dict:
+def lexicon_line(language: Any, item_ids: list[str]) -> dict:
     """A valid ``say`` line made of the given lexicon items (works for any language file)."""
-    return {
-        "segments": [
-            {"t": language.items[i].text, "r": language.items[i].roman} for i in item_ids
-        ],
-        "item_ids": list(item_ids),
-        "highlight_object_ids": list(highlight or []),
-    }
+    segments = []
+    for i in item_ids:
+        item = language.items[i]
+        words = item.text.split() if language.word_spacing else [item.text]
+        romans = (item.roman.split() if language.word_spacing else [item.roman]) or [""]
+        for k, word in enumerate(words):
+            segments.append({"t": word, "r": romans[k] if k < len(romans) else romans[-1]})
+    return {"segments": segments, "item_ids": list(item_ids)}
 
 
-def say(*lines: dict, hint: str = "Wants to know what you would like", mood: str = "neutral",
-        narration: str = "You wait. The night does not.") -> Any:
-    return call("say", lines=list(lines), intent_hint=hint, mood=mood, narration=narration)
+def say(*lines: dict, hint: str = "Wants you to join in with the room",
+        narration: str = "The room roars at the screen. He turns to you.") -> Any:
+    return call("say", lines=list(lines), intent_hint=hint, narration=narration)

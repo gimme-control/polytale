@@ -1,0 +1,44 @@
+{
+  "locale": "ko-KR",
+  "name": "Korean",
+  "native_name": "한국어",
+  "romanization": {
+    "system": "revised",
+    "label": "Romaja"
+  },
+  "word_spacing": true,
+  "currency_symbol": "₩",
+  "typing_note": "Learners often type romaja loosely and without spacing (\"annyeonghaseyo\", \"hwaiting\", \"daebak\"). Treat it as the word itself.",
+  "phrasebook_voice": {
+    "gemini_voice": "Aoede",
+    "elevenlabs_voice_id": "",
+    "style": "A clear, neutral, friendly voice saying one short phrase at an easy pace, for someone to copy."
+  },
+  "items": {
+    "hello": { "text": "안녕하세요", "roman": "annyeonghaseyo", "gloss": "hello", "kind": "phrase" },
+    "thanks": { "text": "감사합니다", "roman": "gamsahamnida", "gloss": "thanks", "kind": "phrase" },
+    "friend": { "text": "친구", "roman": "chingu", "gloss": "friend", "kind": "noun" },
+    "where": { "text": "어디예요", "roman": "eodiyeyo", "gloss": "where is (she)?", "kind": "phrase", "learner_side": true },
+    "seen": { "text": "봤어요", "roman": "bwasseoyo", "gloss": "(have you) seen", "kind": "verb", "learner_side": true },
+    "cheers": { "text": "건배", "roman": "geonbae", "gloss": "cheers! (toast)", "kind": "phrase" },
+    "goal": { "text": "골", "roman": "gol", "gloss": "goal!", "kind": "phrase" },
+    "go_team": { "text": "화이팅", "roman": "hwaiting", "gloss": "come on! let's go! (the chant)", "kind": "slang" },
+    "fan_zone": { "text": "팬존", "roman": "paenjon", "gloss": "the fan zone", "kind": "noun" },
+    "awesome": { "text": "대박", "roman": "daebak", "gloss": "amazing, unreal (slang)", "kind": "slang" },
+    "yes": { "text": "네", "roman": "ne", "gloss": "yes", "kind": "phrase" },
+    "no": { "text": "아니요", "roman": "aniyo", "gloss": "no", "kind": "phrase" },
+    "good": { "text": "좋아요", "roman": "joayo", "gloss": "good, nice", "kind": "adjective" },
+    "sorry": { "text": "죄송해요", "roman": "joesonghaeyo", "gloss": "sorry", "kind": "phrase" },
+    "mate": { "text": "형", "roman": "hyeong", "gloss": "mate, big brother (slang address)", "kind": "slang" },
+    "she": { "text": "그녀", "roman": "geunyeo", "gloss": "she, her", "kind": "pronoun" },
+    "left": { "text": "갔어요", "roman": "gasseoyo", "gloss": "(she) left, has gone", "kind": "verb" },
+    "photo": { "text": "사진", "roman": "sajin", "gloss": "photo", "kind": "noun" },
+    "match": { "text": "경기", "roman": "gyeonggi", "gloss": "the match", "kind": "noun" },
+    "team": { "text": "팀", "roman": "tim", "gloss": "the team", "kind": "noun" },
+    "tonight": { "text": "오늘 밤", "roman": "oneul bam", "gloss": "tonight", "kind": "noun" },
+    "gate": { "text": "2번 게이트", "roman": "ibeon geiteu", "gloss": "gate 2", "kind": "noun" },
+    "here": { "text": "여기", "roman": "yeogi", "gloss": "here", "kind": "noun" },
+    "scarf": { "text": "목도리", "roman": "mokdori", "gloss": "(football) scarf", "kind": "noun" },
+    "win": { "text": "이겨요", "roman": "igyeoyo", "gloss": "to win", "kind": "verb" }
+  }
+}

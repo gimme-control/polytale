@@ -1,4 +1,4 @@
-"""Declarative content: languages, scenes, personas, journey. Models, validators, loader.
+"""Declarative content: languages, scenes, journey. Models, validators, loader.
 
 Validators return ``"<code>: <detail>"`` strings; ``load_content`` raises ``ContentError``
 when any validator reports anything. Missing art is a separate, non-fatal check.
@@ -18,16 +18,8 @@ from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 CONTENT_ROOT = Path(__file__).resolve().parents[1] / "content"
 
-ZONES: tuple[str, ...] = ("display", "counter", "npc", "inventory", "gone")
-UNPOSITIONED_ZONES = frozenset({"inventory", "gone"})  # HUD tray / off stage: no coordinates
-NEUTRAL_MOOD = "neutral"
 # The player's own language: narration, clues, glosses and intent hints are written in it.
 SUPPORT_LANGUAGE = "English"
-ACTIONS: dict[str, str] = {  # verb id -> button label
-    "point": "Point at", "take": "Take", "give": "Give", "show": "Show", "drink": "Drink",
-    "eat": "Eat", "pay": "Pay",
-}
-DIFFICULTIES: tuple[str, ...] = ("story", "immersion")
 TRUST_MIN, TRUST_MAX = -2, 3
 MIN_TARGETS, MAX_TARGETS = 8, 12
 MIN_RECALL_OVERLAP = 5
@@ -58,13 +50,13 @@ class Item(BaseModel):
     roman: str = ""
     gloss: str = Field(min_length=1)
     kind: str = "noun"
-    # A customer's line ("how much?"): the learner's to say. The character never says it for
-    # them; it answers when asked.
+    # A line of the player's own ("where is she?"): theirs to say. The character never says it
+    # for them; it answers when asked.
     learner_side: bool = False
 
     @property
     def parts(self) -> list[str]:
-        """The spoken parts of ``text``: a placeholder ("…", "...", "~") splits a frame."""
+        """The spoken parts of ``text``: a placeholder (ellipsis, "...", "~") splits a frame."""
         return [p.strip() for p in re.split("\u2026|\\.{3}|~|\u301c", self.text) if p.strip()]
 
 
@@ -74,7 +66,7 @@ class Language(BaseModel):
     native_name: str = Field(min_length=1)
     romanization: Romanization | None = None
     word_spacing: bool = False
-    currency_symbol: str = ""  # drawn before object prices
+    currency_symbol: str = ""  # kept in the language file; the game no longer spends money
     phrasebook_voice: Voice = Field(default_factory=lambda: Voice())  # reads looked-up phrases
     typing_note: str = ""
     items: dict[str, Item]
@@ -83,26 +75,6 @@ class Language(BaseModel):
     def latin_script(self) -> bool:
         """True when the language is written in Latin letters (judged from its own lexicon)."""
         return any(is_latin(ch) for item in self.items.values() for ch in item.text)
-
-
-class Position(BaseModel):
-    x: float = Field(ge=0, le=1)
-    y: float = Field(ge=0, le=1)
-    h: float = Field(gt=0, le=1)
-
-
-class SceneObject(BaseModel):
-    id: str = Field(min_length=1)
-    item_id: str = Field(min_length=1)
-    art: str = Field(min_length=1)
-    zone: str
-    price: int | None = Field(default=None, ge=0)
-    price_floor: int | None = Field(default=None, ge=0)  # set => the price can be haggled down
-    actions: list[str] = Field(default_factory=lambda: ["point"])
-    positions: dict[str, Position] = Field(default_factory=dict)
-
-    def can_be_in(self, zone: str) -> bool:
-        return zone in UNPOSITIONED_ZONES or zone in self.positions
 
 
 class Voice(BaseModel):
@@ -135,31 +107,17 @@ class Npc(BaseModel):
 class Art(BaseModel):
     background: str = Field(min_length=1)
     cover: str = Field(min_length=1)
-    moods: dict[str, str] = Field(default_factory=dict)
-
-
-class AnyInZone(BaseModel):
-    zone: str
-    objects: list[str] = Field(min_length=1)
 
 
 class GoalWhen(BaseModel):
     clue: str | None = None
     flag: str | None = None
-    in_zone: dict[str, str] = Field(default_factory=dict)
-    any_in_zone: AnyInZone | None = None
 
-    def holds(self, zones: dict[str, str], clues: Iterable[str] = (),
-              flags: Iterable[str] = ()) -> bool:
-        """True when every clause holds for the live zones, clues and flags."""
+    def holds(self, clues: Iterable[str] = (), flags: Iterable[str] = ()) -> bool:
+        """True when every clause holds for the live clues and flags."""
         if self.clue is not None and self.clue not in clues:
             return False
-        if self.flag is not None and self.flag not in flags:
-            return False
-        if any(zones.get(oid) != zone for oid, zone in self.in_zone.items()):
-            return False
-        clause = self.any_in_zone
-        return clause is None or any(zones.get(oid) == clause.zone for oid in clause.objects)
+        return self.flag is None or self.flag in flags
 
 
 class RevealWhen(BaseModel):
@@ -167,7 +125,6 @@ class RevealWhen(BaseModel):
 
     trust_at_least: int | None = None
     flags: list[str] = Field(default_factory=list)
-    paid_at_least: int | None = None  # spent in THIS scene
 
 
 class Clue(BaseModel):
@@ -182,7 +139,6 @@ class Clue(BaseModel):
 class Flag(BaseModel):
     id: str = Field(min_length=1)
     when: str = Field(min_length=1)  # GM-facing: what must have happened
-    requires_paid: list[str] = Field(default_factory=list)  # ANY one of these was paid for
 
 
 class Goal(BaseModel):
@@ -197,20 +153,14 @@ class Scene(BaseModel):
     tagline: str = ""
     intro: str = ""
     setting: str = Field(min_length=1)
-    travel_minutes: int = Field(default=0, ge=0)  # clock cost of getting here
     art: Art
     npc: Npc
-    zones: list[str]
-    objects: list[SceneObject]
-    targets: list[str]
+    targets: list[str]  # the vocabulary this scene teaches
     support_words: list[str] = Field(default_factory=list)  # non-target words the GM may lean on
     clues: list[Clue] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
     goals: list[Goal] = Field(min_length=1)
     _dir: Path = PrivateAttr(default=Path("."))
-
-    def object(self, object_id: str) -> SceneObject | None:
-        return next((o for o in self.objects if o.id == object_id), None)
 
     def goal(self, goal_id: str) -> Goal | None:
         return next((g for g in self.goals if g.id == goal_id), None)
@@ -222,53 +172,18 @@ class Scene(BaseModel):
         return next((f for f in self.flags if f.id == flag_id), None)
 
     @property
-    def moods(self) -> list[str]:
-        return list(dict.fromkeys([NEUTRAL_MOOD, *self.art.moods]))
-
-    @property
     def item_ids(self) -> list[str]:
-        """Every item a line in this scene may carry: targets, object items, support words."""
-        return list(dict.fromkeys(
-            [*self.targets, *(o.item_id for o in self.objects), *self.support_words]
-        ))
+        """Every item a line in this scene may carry: targets and support words."""
+        return list(dict.fromkeys([*self.targets, *self.support_words]))
 
     @property
     def art_paths(self) -> list[str]:
-        paths = [self.art.background, self.art.cover, *self.art.moods.values()]
-        return list(dict.fromkeys([*paths, *(o.art for o in self.objects)]))
-
-
-class Persona(BaseModel):
-    id: str = Field(min_length=1)
-    label: str = Field(min_length=1)
-    blurb: str = ""
-    prompt: str = Field(min_length=1)
-    voice_style: str = ""
-
-
-class Clock(BaseModel):
-    label: str = Field(min_length=1)
-    start: str = Field(pattern=r"^\d{2}:\d{2}$")
-    end: str = Field(pattern=r"^\d{2}:\d{2}$")
-    minutes_per_turn: int = Field(gt=0)
-
-    @property
-    def start_minute(self) -> int:
-        return int(self.start[:2]) * 60 + int(self.start[3:])
-
-    @property
-    def total_minutes(self) -> int:
-        """Minutes from start to end; an end earlier than the start is past midnight."""
-        end = int(self.end[:2]) * 60 + int(self.end[3:])
-        return (end - self.start_minute) % (24 * 60)
+        return list(dict.fromkeys([self.art.background, self.art.cover]))
 
 
 class EndingWhen(BaseModel):
     clues: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
-    clock_left: bool | None = None
-    minutes_left_at_least: int | None = None
-    wallet_at_least: int | None = None
 
 
 class EndingSpec(BaseModel):
@@ -280,15 +195,13 @@ class EndingSpec(BaseModel):
 
 
 class JourneyPlan(BaseModel):
-    """The story file: premise, resources, the act list and the endings."""
+    """The story file: premise, the act list and the endings."""
 
     title: str = Field(min_length=1)
     tagline: str = ""
     art: str = ""  # title art, relative to the content root
     premise: str = Field(min_length=1)
     gm_brief: str = Field(min_length=1)
-    wallet: int = Field(ge=0)
-    clock: Clock
     scenes: list[str] = Field(min_length=1)
     endings: list[EndingSpec] = Field(min_length=1)
 
@@ -296,7 +209,6 @@ class JourneyPlan(BaseModel):
 class Content(BaseModel):
     languages: dict[str, Language]
     scenes: dict[str, Scene]
-    personas: list[Persona]
     journey: JourneyPlan
 
     def language(self, locale: str) -> Language:
@@ -304,9 +216,6 @@ class Content(BaseModel):
 
     def scene(self, scene_id: str) -> Scene:
         return self.scenes[scene_id]
-
-    def persona(self, persona_id: str) -> Persona | None:
-        return next((p for p in self.personas if p.id == persona_id), None)
 
 
 # ---------------------------------------------------------------- validators
@@ -343,42 +252,16 @@ def validate_scene(
     sid = scene.id
     flags = set(known_flags) if known_flags is not None else {f.id for f in scene.flags}
     for label, values in (
-        ("object", [o.id for o in scene.objects]),
         ("goal", [g.id for g in scene.goals]),
         ("clue", [c.id for c in scene.clues]),
         ("flag", [f.id for f in scene.flags]),
         ("target", scene.targets),
-        ("zone", scene.zones),
     ):
         errors += [f"duplicate_id: {sid} {label} '{v}'" for v in _duplicates(values)]
-    errors += [f"unknown_zone: {sid} declares '{z}'" for z in scene.zones if z not in ZONES]
-    zones = set(scene.zones)
-    object_ids = {o.id for o in scene.objects}
-
-    for obj in scene.objects:
-        where = f"{sid} object '{obj.id}'"
-        if obj.zone not in zones:
-            errors.append(f"unknown_zone: {where} starts in '{obj.zone}'")
-        elif not obj.can_be_in(obj.zone):
-            errors.append(f"zone_without_position: {where} starts in '{obj.zone}'")
-        for zone in obj.positions:
-            if zone not in zones:
-                errors.append(f"unknown_zone: {where} has a position for '{zone}'")
-            elif zone in UNPOSITIONED_ZONES:
-                errors.append(f"unknown_zone: {where} positions '{zone}', which has no place")
-        errors += [f"unknown_action: {where} has '{a}'" for a in obj.actions if a not in ACTIONS]
-        if obj.price_floor is not None and (obj.price is None or obj.price_floor > obj.price):
-            errors.append(f"price_floor_invalid: {where} floor must be <= its price")
 
     for locale, language in languages.items():
-        for item_id in scene.targets:
-            if item_id not in language.items:
-                errors.append(f"target_missing_in_language: {sid} '{item_id}' not in {locale}")
-        for obj in scene.objects:
-            if obj.item_id not in language.items:
-                errors.append(
-                    f"unknown_item: {sid} object '{obj.id}' item '{obj.item_id}' not in {locale}"
-                )
+        errors += [f"target_missing_in_language: {sid} '{i}' not in {locale}"
+                   for i in scene.targets if i not in language.items]
         errors += [f"unknown_item: {sid} support word '{w}' not in {locale}"
                    for w in scene.support_words if w not in language.items]
 
@@ -390,47 +273,24 @@ def validate_scene(
 
     for goal in scene.goals:
         where = f"{sid} goal '{goal.id}'"
-        clause = goal.when.any_in_zone
-        pairs = list(goal.when.in_zone.items())
-        if clause is not None:
-            pairs += [(oid, clause.zone) for oid in clause.objects]
-        if not pairs and goal.when.clue is None and goal.when.flag is None:
+        if goal.when.clue is None and goal.when.flag is None:
             errors.append(f"goal_empty: {where} has no condition")
         if goal.when.clue is not None and scene.clue(goal.when.clue) is None:
             errors.append(f"unknown_clue: {where} names '{goal.when.clue}'")
         if goal.when.flag is not None and goal.when.flag not in flags:
             errors.append(f"unknown_flag: {where} names '{goal.when.flag}'")
-        for oid, zone in pairs:
-            if oid not in object_ids:
-                errors.append(f"unknown_object: {where} names '{oid}'")
-            elif zone not in zones:
-                errors.append(f"unknown_zone: {where} names '{zone}'")
-            elif not scene.object(oid).can_be_in(zone):  # type: ignore[union-attr]
-                errors.append(f"zone_without_position: {where} needs '{oid}' in '{zone}'")
 
     for clue in scene.clues:
         errors += [f"unknown_flag: {sid} clue '{clue.id}' needs '{f}'"
                    for way in clue.reveal_when for f in way.flags if f not in flags]
         errors += [f"unknown_item: {sid} clue '{clue.id}' key item '{i}'"
                    for i in clue.key_items if i not in scene.item_ids]
-    for flag in scene.flags:
-        for oid in flag.requires_paid:
-            needed = scene.object(oid)
-            if needed is None or needed.price is None:
-                errors.append(f"unknown_object: {sid} flag '{flag.id}' needs priced object '{oid}'")
 
     for rel in scene.art_paths:
         try:
             resolve_art_path(scene, rel)
         except ValueError:
             errors.append(f"art_escapes_scene: {sid} '{rel}'")
-    return errors
-
-
-def validate_personas(personas: list[Persona]) -> list[str]:
-    errors = [f"duplicate_id: persona '{v}'" for v in _duplicates(p.id for p in personas)]
-    if not personas:
-        errors.append("personas_empty: at least one persona is required")
     return errors
 
 
@@ -453,8 +313,7 @@ def validate_journey(plan: JourneyPlan, scenes: dict[str, Scene]) -> list[str]:
                 errors.append(f"art_escapes_scene: ending '{ending.id}' '{ending.art}'")
     if plan.endings[-1].when != EndingWhen():
         errors.append("ending_no_fallback: the last ending must have an empty 'when'")
-    if plan.clock.total_minutes == 0:
-        errors.append("clock_empty: the clock has no time on it")
+    # Recall across acts: only meaningful once a journey has more than one scene.
     earlier: set[str] = set()
     for index, scene_id in enumerate(s for s in plan.scenes if s in scenes):
         targets = set(scenes[scene_id].targets)
@@ -476,7 +335,6 @@ def validate_content(content: Content) -> list[str]:
     flags = [f.id for s in content.scenes.values() for f in s.flags]
     for scene in content.scenes.values():
         errors += validate_scene(scene, content.languages, flags)
-    errors += validate_personas(content.personas)
     errors += validate_journey(content.journey, content.scenes)
     return errors
 
@@ -534,12 +392,8 @@ def load_content(root: Path = CONTENT_ROOT) -> Content:
             raise ContentError([f"id_mismatch: {path.parent.name}/scene.json has id '{scene.id}'"])
         scene._dir = path.parent
         scenes[scene.id] = scene
-    personas = [
-        _parse(Persona, raw, f"personas.json[{i}]")
-        for i, raw in enumerate(_read(root / "personas.json"))
-    ]
     journey = _parse(JourneyPlan, _read(root / "journey.json"), "journey.json")
-    content = Content(languages=languages, scenes=scenes, personas=personas, journey=journey)
+    content = Content(languages=languages, scenes=scenes, journey=journey)
     errors = validate_content(content)
     if errors:
         raise ContentError(errors)

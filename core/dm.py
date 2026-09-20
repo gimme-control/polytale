@@ -57,8 +57,6 @@ class TurnResult(BaseModel):
     turn: int
     lines: list[Line]
     narration: str | None
-    mood: str
-    zones: dict[str, str]
     events: list[Entry]  # every transcript entry this turn added, in order
     progress: Progress
     scene_complete: bool
@@ -93,23 +91,21 @@ def enter_scene(journey: Journey, content: Content, scene_id: str | None = None)
     if previous is not None and previous.complete:
         working.history.append(build_summary(working, content))
     scene = content.scene(order[index])
-    if previous is None or previous.scene_id != scene.id:
-        game.spend_minutes(working, scene.travel_minutes)  # getting there costs clock
     working.scene_index = index
-    working.scene = SceneRun(scene_id=scene.id, zones={o.id: o.zone for o in scene.objects})
+    working.scene = SceneRun(scene_id=scene.id)
     return working
 
 
 def _close_act(journey: Journey, content: Content) -> None:
     """Mark the act complete and resolve the ending when the story is over (in place).
 
-    The story is over when the last act's goals are done, or the clock has run out in any act.
+    The story is over once the last act is closed.
     """
     run = journey.scene
     assert run is not None
     run.complete = True
     last = journey.scene_index == len(content.journey.scenes) - 1
-    if journey.game.ending_id is None and (last or game.minutes_left(journey, content) == 0):
+    if journey.game.ending_id is None and last:
         journey.game.ending_id = game.resolve_ending(journey, content).id
 
 
@@ -274,7 +270,6 @@ def _commit(
             text=joiner.join(s.t for s in spec["segments"]),
             romanization=" ".join(s.r for s in spec["segments"] if s.r),
             item_ids=spec["item_ids"],
-            highlight_object_ids=spec["highlight_object_ids"],
             audio_url=line_audio_url(working.journey_id, line_id),
         )
         for i, spec in enumerate(terminal["lines"])
@@ -284,38 +279,24 @@ def _commit(
         run.transcript.append(NarrationEntry(turn=turn, text=narration))
     run.transcript += [NpcEntry(turn=turn, line=line) for line in lines]
 
-    own_object = {o.item_id for o in scene.objects}
     posed: list[str] = []
-    highlighted: list[str] = []
     for line in lines:
         vocab.note_appearances(working, scene.id, line.item_ids)
         posed += line.item_ids
-        highlighted += [scene.object(oid).item_id  # type: ignore[union-attr]
-                        for oid in line.highlight_object_ids]
-        if line.highlight_object_ids:  # a lit line also supports its object-less words
-            highlighted += [i for i in line.item_ids if i not in own_object]
-    for item_id in ctx.owed:  # an owed word came back with no highlight: one pass offered
-        if item_id in posed and item_id not in highlighted:
-            run.unsupported_offers[item_id] = run.unsupported_offers.get(item_id, 0) + 1
     run.exchange = Exchange(
         posed_item_ids=list(dict.fromkeys(posed)),
-        highlighted_item_ids=list(dict.fromkeys(highlighted)),
         line_ids=[line.line_id for line in lines],
         intent_hint=terminal["intent_hint"],
     )
-    run.mood = terminal["mood"]
     run.started = True
     run.turn = turn + 1
-    if ctx.attempt is not None:  # the clock ticks in code, once per player turn
-        game.spend_minutes(working, content.journey.clock.minutes_per_turn)
     complete_ready_goals(working, scene)
     resolved_before = working.game.ending_id
-    if (all(g.id in run.goals_done for g in scene.goals)
-            or game.minutes_left(working, content) == 0):
+    if all(g.id in run.goals_done for g in scene.goals):
         _close_act(working, content)
     ended = working.game.ending_id is not None and resolved_before is None
     return TurnResult(
-        turn=turn, lines=lines, narration=narration, mood=run.mood, zones=dict(run.zones),
+        turn=turn, lines=lines, narration=narration,
         events=list(run.transcript[transcript_start:]),
         progress=progress_view(working, content),
         scene_complete=run.complete,
@@ -335,8 +316,7 @@ def _play(
     run = working.scene
     assert run is not None
     scene, language = content.scene(run.scene_id), content.language(working.language)
-    persona = content.persona(working.persona_id) or content.personas[0]
-    snapshot = build_snapshot(working, content, scene, language, persona, attempt)
+    snapshot = build_snapshot(working, scene, language, attempt)
     transcript_start = len(run.transcript)
     if attempt is not None:
         attempt.consumed, attempt.turn = True, run.turn
@@ -345,12 +325,9 @@ def _play(
             LearnerEntry(
                 turn=run.turn, attempt_id=attempt.attempt_id, input_mode=attempt.input_mode,
                 transcript=attempt.transcript, romanized=attempt.romanized,
-                tapped_object_id=attempt.tapped_object_id, action_id=attempt.action_id,
             )
         )
-    ctx = ToolContext(scene=scene, language=language, attempt=attempt,
-                      mastered=vocab.mastered_items(working),
-                      owed=tuple(vocab.owed_items(working, scene)))
+    ctx = ToolContext(scene=scene, language=language, attempt=attempt)
     terminal = _run_loop(
         working, content, snapshot, ctx,
         client if client is not None else gemini.get_client(),
@@ -379,10 +356,9 @@ def run_turn(
 ) -> tuple[Journey, TurnResult]:
     """Play one learner attempt. Returns ``(new_journey, TurnResult)``.
 
-    ``attempt``: ``{attempt_id, input_mode: speech|text|tap, transcript, romanized?,
-    detected_languages?, confidence?, tapped_object_id?, action_id?}``. Raises ValueError for a bad attempt
-    or a scene that is not in play, TurnError when the model fails; the input journey is never
-    mutated.
+    ``attempt``: ``{attempt_id, input_mode: speech|text, transcript, romanized?,
+    detected_languages?, confidence?}``. Raises ValueError for a bad attempt or a scene that is
+    not in play, TurnError when the model fails; the input journey is never mutated.
     """
     run = journey.scene
     if run is None or not run.started:
@@ -396,14 +372,6 @@ def run_turn(
     existing = journey.attempts.get(record.attempt_id)
     if existing is not None and existing.consumed:
         raise ValueError(f"attempt {record.attempt_id} was already consumed")
-    if record.input_mode == "tap":
-        tapped = content.scene(run.scene_id).object(record.tapped_object_id or "")
-        if tapped is None:
-            raise ValueError(f"tap attempt names unknown object {record.tapped_object_id!r}")
-        record.action_id = record.action_id or "point"
-        if record.action_id not in tapped.actions:
-            raise ValueError(f"{tapped.id} cannot be used with {record.action_id!r}; "
-                             f"its verbs are {', '.join(tapped.actions)}")
-    elif not record.transcript.strip():
+    if not record.transcript.strip():
         raise ValueError("speech/text attempt has an empty transcript")
     return _play(journey, content, record, client=client, models=models, trace=trace)

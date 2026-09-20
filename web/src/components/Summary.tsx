@@ -34,15 +34,12 @@ export function Summary() {
   const scenes = useGame((s) => s.scenes);
   const ending = useGame((s) => s.ending);
   const phrases = useGame((s) => s.summary?.phrasebook ?? s.phrasebook);
-  const game = useGame((s) => s.game);
-  const chooseDifficulty = useGame((s) => s.chooseDifficulty);
   const playPhrase = useGame((s) => s.playPhrase);
   const continueJourney = useGame((s) => s.continueJourney);
   const newJourney = useGame((s) => s.newJourney);
   const [busy, setBusy] = useState(false);
   if (!language || (!summary && !ending)) return null;
   if (!summary) return <main data-testid="summary" className="slow-fade-in scroll-quiet absolute inset-0 overflow-y-auto bg-sheet">{ending && <EndingHero ending={ending} />}</main>;
-  const other = game?.difficulty === "immersion" ? "story" : "immersion";
 
   const recalled = summary.items.filter((i) => summary.recalled.includes(i.item_id));
   const earlier = scenes.filter((s) => s.status === "done" && s.id !== summary.scene_id).map((s) => s.name);
@@ -130,19 +127,6 @@ export function Summary() {
           >
             {ending ? "Play again" : "Start over"}
           </button>
-          {ending && (
-            <button
-              type="button"
-              data-testid="play-other"
-              onClick={() => {
-                chooseDifficulty(other);
-                void newJourney();
-              }}
-              className="border-0 bg-transparent p-0 text-[14px] text-ink-2 underline decoration-hair-2 underline-offset-4 hover:text-ink"
-            >
-              Try {other === "immersion" ? "Immersion" : "Story mode"}
-            </button>
-          )}
         </div>
       </div>
     </main>
@@ -208,7 +192,6 @@ function WordRow({ item, locale, showRoman }: { item: SummaryItem; locale: strin
 
 /** The ending: art, title, the last of the prose, and what it cost you. */
 function EndingHero({ ending }: { ending: Ending }) {
-  const symbol = useGame((s) => s.language?.currency_symbol ?? "");
   const st = ending.stats;
   return (
     <section data-testid="ending" data-ending={ending.id} className="relative flex min-h-[92%] flex-col justify-end overflow-hidden">
@@ -223,10 +206,9 @@ function EndingHero({ ending }: { ending: Ending }) {
           {ending.text}
         </p>
         <dl data-testid="ending-stats" className="m-0 mt-9 flex flex-wrap gap-x-10 gap-y-4">
-          <Stat label={st.minutes_left > 0 ? "to spare" : "too late"} value={st.minutes_left > 0 ? `${st.minutes_left} min` : "0 min"} />
-          <Stat label="left in your pocket" value={`${symbol}${st.wallet}`} />
-          <Stat label={st.clues === 1 ? "clue found" : "clues found"} value={String(st.clues)} />
+          <Stat label={st.clues === 1 ? "thing you found out" : "things you found out"} value={String(st.clues)} />
           <Stat label="words that stuck" value={String(st.words_mastered)} />
+          <Stat label="words still shaky" value={String(st.words_shaky)} />
         </dl>
       </div>
     </section>
